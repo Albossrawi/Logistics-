@@ -15,7 +15,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <Sidebar />
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
         <Header />
-        <main className="flex-1 overflow-y-auto bg-surface-950 p-6">
+        <main className="flex-1 overflow-y-auto bg-surface-950 p-4 md:p-6">
           {children}
         </main>
       </div>

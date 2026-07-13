@@ -1,10 +1,11 @@
-import { Bell, Sun, Moon, Search, RefreshCw } from 'lucide-react';
+import { Bell, Sun, Moon, Search, RefreshCw, Menu } from 'lucide-react';
 import { useState } from 'react';
 import { clsx } from 'clsx';
 import { useAppStore } from '../../store/appStore';
 import { AlertPanel } from './AlertPanel';
 
 const pageNames: Record<string, string> = {
+  labels: 'Delivery Label Extractor',
   dashboard: 'Operations Dashboard',
   shipments: 'Shipment Tracking',
   inventory: 'Inventory Management',
@@ -18,7 +19,7 @@ const pageNames: Record<string, string> = {
 };
 
 export function Header() {
-  const { theme, setTheme, activePage, alerts, dateRange, setDateRange } = useAppStore();
+  const { theme, setTheme, activePage, alerts, dateRange, setDateRange, toggleMobileNav } = useAppStore();
   const [showAlerts, setShowAlerts] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const unreadCount = alerts.filter((a) => !a.read).length;
@@ -29,13 +30,22 @@ export function Header() {
   };
 
   return (
-    <header className="h-16 flex items-center justify-between px-6 bg-surface-900 border-b border-surface-800 flex-shrink-0 relative z-20">
-      {/* Left: Page Title */}
-      <div>
-        <h1 className="text-lg font-semibold text-white">{pageNames[activePage] || 'Dashboard'}</h1>
-        <p className="text-xs text-surface-400">
-          Last updated: {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-        </p>
+    <header className="h-16 flex items-center justify-between gap-2 px-4 md:px-6 bg-surface-900 border-b border-surface-800 flex-shrink-0 relative z-20">
+      {/* Left: Menu (mobile) + Page Title */}
+      <div className="flex items-center gap-2 min-w-0">
+        <button
+          onClick={toggleMobileNav}
+          className="md:hidden w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-lg bg-surface-800 border border-surface-700 text-surface-300 hover:text-white"
+          aria-label="Open menu"
+        >
+          <Menu size={18} />
+        </button>
+        <div className="min-w-0">
+          <h1 className="text-base md:text-lg font-semibold text-white truncate">{pageNames[activePage] || 'Dashboard'}</h1>
+          <p className="hidden sm:block text-xs text-surface-400">
+            Last updated: {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </p>
+        </div>
       </div>
 
       {/* Center: Search */}
