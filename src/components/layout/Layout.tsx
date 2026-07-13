@@ -2,7 +2,7 @@ import { ScanLine } from 'lucide-react';
 
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex flex-col h-screen w-screen bg-surface-950 text-white overflow-hidden">
+    <div className="flex flex-col h-screen w-full bg-surface-950 text-white overflow-hidden">
       {/* Brand bar */}
       <header className="h-14 flex items-center gap-2.5 px-4 md:px-6 bg-surface-900 border-b border-surface-800 flex-shrink-0">
         <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-primary-500 to-accent-cyan flex items-center justify-center flex-shrink-0">
