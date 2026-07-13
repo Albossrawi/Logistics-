@@ -106,7 +106,11 @@ export function LabelExtractor() {
     try {
       const { delivery, reference, sscc, rawText, note } = await performScan(photo);
       setEngineNote(note);
-      if (delivery.trim() || reference.trim()) {
+      // Auto-CLL groups by delivery number, so a scan with no delivery number
+      // can't be auto-added (it would create a phantom row). Everything else
+      // needs at least one field. Otherwise pause on the review card.
+      const enough = autoCll ? delivery.trim() !== '' : (delivery.trim() !== '' || reference.trim() !== '');
+      if (enough) {
         // In auto-CLL mode, skip a box already counted (same delivery + SSCC).
         if (autoCll && isDuplicatePackage(batch!.entries, delivery, sscc)) {
           setRapidLast(`${delivery.trim()} · already counted`);
@@ -125,8 +129,15 @@ export function LabelExtractor() {
           window.setTimeout(() => fileRef.current?.click(), 400);
         }
       } else {
-        // Nothing detected — fall into the review card so it can be typed by hand.
-        setDraft({ ...emptyDraft, photo, rawText: rawText || 'No numbers detected — enter them by hand.' });
+        // Couldn't read enough — pause so it can be checked/typed by hand.
+        setDraft({
+          ...emptyDraft,
+          photo,
+          deliveryNumber: delivery,
+          referenceNumber: reference,
+          sscc,
+          rawText: rawText || (autoCll ? "Couldn't read the delivery number — check the photo and type it." : 'No numbers detected — enter them by hand.'),
+        });
       }
     } catch (err) {
       console.error('Rapid scan failed', err);
@@ -263,6 +274,16 @@ export function LabelExtractor() {
               Scan every box: the sheet shows one line per delivery number, and CLL = how many
               different package serial numbers (SSCC) you scanned. Re-scanning the same box won't count twice.
             </p>
+            {autoCll && !aiActive && (
+              <p className="text-xs text-amber-400 mt-2 flex items-start gap-1.5">
+                <Sparkles size={13} className="mt-0.5 flex-shrink-0 text-violet-300" />
+                <span>
+                  For reliable counting, turn on <b>Smart read (AI)</b> above. On-device OCR often
+                  misreads serial and delivery numbers on angled or wrinkled labels — a single wrong
+                  character splits one box into several rows.
+                </span>
+              </p>
+            )}
           </div>
 
           {engine === 'ai' && (
