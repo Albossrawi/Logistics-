@@ -80,3 +80,31 @@ export async function scanLabelAI(dataUrl: string, opts: AIScanOptions): Promise
     rawText: text,
   };
 }
+
+/** Make a tiny request to validate the API key, model, and connectivity. */
+export async function testAiKey(opts: AIScanOptions): Promise<void> {
+  const { default: Anthropic } = await import('@anthropic-ai/sdk');
+  const client = new Anthropic({ apiKey: opts.apiKey.trim(), dangerouslyAllowBrowser: true });
+  await client.messages.create({
+    model: opts.model || 'claude-opus-4-8',
+    max_tokens: 8,
+    messages: [{ role: 'user', content: 'Reply with OK.' }],
+  });
+}
+
+/** Turn an Anthropic SDK / network error into a short, actionable message. */
+export function describeAiError(err: unknown): string {
+  const e = err as { status?: number; message?: string; error?: { message?: string; error?: { message?: string } } };
+  const status = e?.status;
+  const body = e?.error?.error?.message || e?.error?.message;
+  const msg = body || e?.message || String(err);
+  if (status === 401) return 'API key rejected (401) — re-check for a typo or extra space in the key.';
+  if (status === 403) return "Access denied (403) — this key/account can't use this model.";
+  if (status === 404) return 'Model not found (404) — pick a different model in settings.';
+  if (status === 429) return 'Rate limited (429) — wait a few seconds and try again.';
+  if (status === 400 && /credit|billing|quota|balance/i.test(msg)) return 'No credit (400) — add billing at console.anthropic.com.';
+  if (status === 400) return `Bad request (400): ${msg}`;
+  if (status && status >= 500) return `Anthropic server error (${status}) — try again shortly.`;
+  if (!status) return `Couldn't reach Anthropic (network or browser CORS). ${msg}`;
+  return `AI error ${status}: ${msg}`;
+}
