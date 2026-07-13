@@ -2,10 +2,13 @@ import { useRef, useState } from 'react';
 import {
   Camera, ScanLine, Plus, Trash2, FileSpreadsheet, FileText,
   Printer, Mail, RotateCw, Loader2, X, ChevronDown, ChevronUp, Check,
+  Sparkles, Settings2, Eye, EyeOff,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useLabelStore } from '../store/labelStore';
+import { useSettingsStore, AI_MODELS } from '../store/settingsStore';
 import { fileToDataURL, rotateImage, scanLabel } from '../utils/ocr';
+import { scanLabelAI } from '../utils/aiVision';
 import { exportExcel, exportWord, printBatch, emailBatch, formatLine } from '../utils/labelExport';
 import type { LabelEntry } from '../types';
 
@@ -25,6 +28,8 @@ export function LabelExtractor() {
     updateBatch, addEntry, updateEntry, deleteEntry,
   } = useLabelStore();
 
+  const { engine, apiKey, model, setEngine, setApiKey, setModel } = useSettingsStore();
+
   const batch = activeBatch();
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -34,6 +39,11 @@ export function LabelExtractor() {
   const [progress, setProgress] = useState(0);
   const [showRaw, setShowRaw] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
+  const [showKey, setShowKey] = useState(false);
+  const [engineNote, setEngineNote] = useState('');
+
+  const aiActive = engine === 'ai' && apiKey.trim() !== '';
 
   if (!batch) return null;
 
@@ -50,8 +60,21 @@ export function LabelExtractor() {
   async function runScan(photo: string) {
     setScanning(true);
     setProgress(0);
+    setEngineNote('');
     try {
-      const res = await scanLabel(photo, setProgress);
+      let res;
+      if (aiActive) {
+        try {
+          res = await scanLabelAI(photo, { apiKey: apiKey.trim(), model });
+          setEngineNote('Read with AI (Claude vision)');
+        } catch (err) {
+          console.error('AI vision failed, falling back to on-device OCR', err);
+          setEngineNote('AI read failed — used on-device OCR instead. Check your API key in settings.');
+          res = await scanLabel(photo, setProgress);
+        }
+      } else {
+        res = await scanLabel(photo, setProgress);
+      }
       setDraft((d) => ({
         ...d,
         photo,
@@ -60,7 +83,7 @@ export function LabelExtractor() {
         rawText: res.rawText,
       }));
     } catch (err) {
-      console.error('OCR failed', err);
+      console.error('Scan failed', err);
       setDraft((d) => ({ ...d, rawText: 'Could not read the image. Enter the numbers by hand.' }));
     } finally {
       setScanning(false);
@@ -103,14 +126,121 @@ export function LabelExtractor() {
   return (
     <div className="max-w-3xl mx-auto space-y-5 pb-16">
       {/* Title */}
-      <div>
-        <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-          <ScanLine className="text-primary-400" /> Delivery Label Extractor
-        </h1>
-        <p className="text-surface-400 text-sm mt-1">
-          Photograph a label, capture the reference &amp; delivery numbers, and export a printable sheet.
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+            <ScanLine className="text-primary-400" /> Delivery Label Extractor
+          </h1>
+          <p className="text-surface-400 text-sm mt-1">
+            Photograph a label, capture the reference &amp; delivery numbers, and export a printable sheet.
+          </p>
+        </div>
+        <button
+          onClick={() => setShowSettings((s) => !s)}
+          className={clsx(
+            'flex items-center gap-1.5 text-sm rounded-lg px-3 py-2 border transition-colors flex-shrink-0',
+            aiActive
+              ? 'bg-violet-600/20 border-violet-500/40 text-violet-300'
+              : 'bg-surface-800 border-surface-700 text-surface-300 hover:text-white'
+          )}
+          title="Reader settings"
+        >
+          <Settings2 size={15} />
+          {aiActive ? 'Smart read: on' : 'Reader'}
+        </button>
       </div>
+
+      {/* Settings panel */}
+      {showSettings && (
+        <div className="bg-surface-900 border border-surface-800 rounded-xl p-4 space-y-4">
+          <div>
+            <div className="text-xs font-semibold text-surface-300 uppercase tracking-wide mb-2">
+              How to read labels
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <button
+                onClick={() => setEngine('ocr')}
+                className={clsx(
+                  'text-left rounded-lg border p-3 transition-colors',
+                  engine === 'ocr'
+                    ? 'border-primary-500 bg-primary-600/10'
+                    : 'border-surface-700 hover:border-surface-600'
+                )}
+              >
+                <div className="flex items-center gap-2 text-white text-sm font-medium">
+                  <ScanLine size={15} /> On-device OCR
+                </div>
+                <div className="text-xs text-surface-400 mt-1">
+                  Free, private, works offline. Less accurate on tricky labels.
+                </div>
+              </button>
+              <button
+                onClick={() => setEngine('ai')}
+                className={clsx(
+                  'text-left rounded-lg border p-3 transition-colors',
+                  engine === 'ai'
+                    ? 'border-violet-500 bg-violet-600/10'
+                    : 'border-surface-700 hover:border-surface-600'
+                )}
+              >
+                <div className="flex items-center gap-2 text-white text-sm font-medium">
+                  <Sparkles size={15} className="text-violet-300" /> Smart read (AI)
+                </div>
+                <div className="text-xs text-surface-400 mt-1">
+                  Claude vision — best on messy photos. Needs an API key; uses your account.
+                </div>
+              </button>
+            </div>
+          </div>
+
+          {engine === 'ai' && (
+            <div className="space-y-3 border-t border-surface-800 pt-3">
+              <label className="block">
+                <span className="text-xs font-semibold text-surface-300 uppercase tracking-wide">
+                  Anthropic API key
+                </span>
+                <div className="mt-1 flex gap-2">
+                  <input
+                    type={showKey ? 'text' : 'password'}
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                    placeholder="sk-ant-..."
+                    autoComplete="off"
+                    className="flex-1 bg-surface-800 border border-surface-700 rounded-lg px-3 py-2 text-white font-mono text-sm"
+                  />
+                  <button
+                    onClick={() => setShowKey((s) => !s)}
+                    className="px-3 rounded-lg bg-surface-800 border border-surface-700 text-surface-300 hover:text-white"
+                    title={showKey ? 'Hide' : 'Show'}
+                  >
+                    {showKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+                <span className="text-xs text-surface-500 mt-1 block">
+                  Stored only in this browser. Get a key at console.anthropic.com. Charges go to your account.
+                </span>
+              </label>
+              <label className="block">
+                <span className="text-xs font-semibold text-surface-300 uppercase tracking-wide">Model</span>
+                <select
+                  value={model}
+                  onChange={(e) => setModel(e.target.value)}
+                  className="mt-1 w-full bg-surface-800 border border-surface-700 rounded-lg px-3 py-2 text-white text-sm"
+                >
+                  {AI_MODELS.map((m) => (
+                    <option key={m.id} value={m.id}>{m.label}</option>
+                  ))}
+                </select>
+              </label>
+              {engine === 'ai' && !apiKey.trim() && (
+                <p className="text-xs text-amber-400">
+                  Enter an API key to turn on Smart read. Until then, scans use on-device OCR.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Batch selector */}
       <div className="flex flex-wrap items-center gap-2">
@@ -218,7 +348,7 @@ export function LabelExtractor() {
               {scanning && (
                 <div className="absolute inset-0 bg-black/60 rounded-lg flex flex-col items-center justify-center gap-2 text-white text-sm">
                   <Loader2 className="animate-spin" />
-                  Reading… {Math.round(progress * 100)}%
+                  {aiActive ? 'Reading with AI…' : `Reading… ${Math.round(progress * 100)}%`}
                 </div>
               )}
             </div>
@@ -243,6 +373,16 @@ export function LabelExtractor() {
                 onChange={(v) => setDraft((d) => ({ ...d, quantity: v }))}
                 placeholder="4"
               />
+
+              {engineNote && (
+                <p className={clsx(
+                  'text-xs flex items-center gap-1',
+                  engineNote.startsWith('AI read failed') ? 'text-amber-400' : 'text-violet-300'
+                )}>
+                  {!engineNote.startsWith('AI read failed') && <Sparkles size={12} />}
+                  {engineNote}
+                </p>
+              )}
 
               <div className="flex flex-wrap gap-2 pt-1">
                 {draft.photo && (

@@ -18,11 +18,19 @@ Each row is written as `NAKD1-8FL64/SRV010001 - 7 CLL`, exactly like the manual 
    `RETUR BEDRE NÆTTER/SENGEFABRIKKEN`), an editable **Date**, and an optional
    **Pallet** number. Every new sheet gets its own title + date.
 3. **Scan a label** — tap *Take a photo of a label*. On a phone this opens the
-   camera. The photo is read **on-device** (no internet needed for a key, no data
-   leaves the browser) and the delivery & reference numbers are filled in
-   automatically. You can rotate the photo, re-scan, or fix any field by hand —
-   the fields are always editable. Enter the **CLL** (number of colli) and tap
+   camera. The delivery & reference numbers are read automatically and filled
+   in. You can rotate the photo, re-scan, or fix any field by hand — the fields
+   are always editable. Enter the **CLL** (number of colli) and tap
    *Add to list*. No camera? Use *Add a row by hand*.
+
+   **Two readers** (switch with the *Reader* button, top-right):
+   - **On-device OCR** (default) — free, private, works offline; less accurate
+     on wrinkled/angled photos.
+   - **Smart read (AI)** — Claude vision reads even messy labels far more
+     reliably. Paste an Anthropic API key once (stored only in your browser;
+     usage is billed to your account) and pick a model (Opus 4.8 for accuracy,
+     Haiku 4.5 for speed/cost). If an AI read fails, it automatically falls back
+     to on-device OCR.
 4. **Review the rows** — edit or delete any row inline.
 5. **Export / share** using the toolbar:
    - **Excel** — an `.xlsx` spreadsheet (one row per label).
@@ -38,12 +46,14 @@ reload. Photos are kept only for the current session.
 
 - React 19 + TypeScript + Vite + Tailwind
 - On-device OCR: [`tesseract.js`](https://github.com/naptha/tesseract.js)
+- Optional AI vision: [`@anthropic-ai/sdk`](https://github.com/anthropics/anthropic-sdk-typescript) (Claude vision, in-browser with your key)
 - Spreadsheet export: [`exceljs`](https://github.com/exceljs/exceljs)
 - Document export: [`docx`](https://github.com/dolanmiu/docx)
 - State: `zustand` (persisted)
 
-The OCR engine and the Excel/Word generators are **code-split** and load only
-when first used, so the initial page stays light on mobile.
+The OCR engine, the Claude SDK, and the Excel/Word generators are all
+**code-split** and load only when first used, so the initial page stays light on
+mobile.
 
 ## Develop
 
