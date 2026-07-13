@@ -1,0 +1,16 @@
+# Netlify build configuration for this Vite app.
+# Netlify reads these automatically, so the site deploys with zero manual setup.
+
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  # Vite 8 requires Node 20.19+ / 22.12+; pin a modern LTS.
+  NODE_VERSION = "22"
+
+# Single-page app: serve index.html for any path so deep links don't 404.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

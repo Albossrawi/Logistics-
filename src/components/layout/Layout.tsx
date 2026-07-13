@@ -1,24 +1,19 @@
-import { useEffect } from 'react';
-import { Sidebar } from './Sidebar';
-import { Header } from './Header';
-import { useAppStore } from '../../store/appStore';
+import { ScanLine } from 'lucide-react';
 
 export function Layout({ children }: { children: React.ReactNode }) {
-  const { theme } = useAppStore();
-
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', theme === 'dark');
-  }, [theme]);
-
   return (
-    <div className="flex h-screen w-screen bg-surface-950 text-white overflow-hidden">
-      <Sidebar />
-      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-        <Header />
-        <main className="flex-1 overflow-y-auto bg-surface-950 p-6">
-          {children}
-        </main>
-      </div>
+    <div className="flex flex-col h-screen w-screen bg-surface-950 text-white overflow-hidden">
+      {/* Brand bar */}
+      <header className="h-14 flex items-center gap-2.5 px-4 md:px-6 bg-surface-900 border-b border-surface-800 flex-shrink-0">
+        <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-primary-500 to-accent-cyan flex items-center justify-center flex-shrink-0">
+          <ScanLine className="w-4 h-4 text-white" strokeWidth={2.5} />
+        </div>
+        <span className="font-semibold text-white truncate">Delivery Label Extractor</span>
+      </header>
+
+      <main className="flex-1 overflow-y-auto bg-surface-950 p-4 md:p-6">
+        {children}
+      </main>
     </div>
   );
 }
