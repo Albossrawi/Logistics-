@@ -23,7 +23,7 @@ export const useAppStore = create<AppStore>()(
   persist(
     (set) => ({
       theme: 'dark',
-      activePage: 'dashboard',
+      activePage: 'labels',
       sidebarCollapsed: false,
       alerts: initialAlerts,
       selectedShipment: null,

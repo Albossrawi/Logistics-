@@ -2,11 +2,12 @@ import { clsx } from 'clsx';
 import {
   LayoutDashboard, Package, Warehouse, TruckIcon, BarChart3,
   BrainCircuit, Map, Settings, ChevronLeft, ChevronRight,
-  Zap, Globe, Route
+  Zap, Globe, Route, ScanLine
 } from 'lucide-react';
 import { useAppStore } from '../../store/appStore';
 
 const navItems = [
+  { id: 'labels', label: 'Label Extractor', icon: ScanLine, badge: null },
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, badge: null },
   { id: 'shipments', label: 'Shipments', icon: Package, badge: '6' },
   { id: 'inventory', label: 'Inventory', icon: Warehouse, badge: '2' },

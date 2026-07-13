@@ -1,3 +1,32 @@
+// ---- Delivery Label Extractor ----
+
+/** A single scanned/entered label row within a batch. */
+export interface LabelEntry {
+  id: string;
+  /** Consignment / delivery number, e.g. "NAKD1-8FL64". */
+  deliveryNumber: string;
+  /** Reference number, e.g. "SRV010001". */
+  referenceNumber: string;
+  /** Number of colli (CLL / packages) for this row. */
+  quantity: string;
+  /** Optional photo of the label (data URL). Not persisted to storage. */
+  photo?: string;
+  createdAt: string;
+}
+
+/** A printable sheet: one title + one date containing many label rows. */
+export interface LabelBatch {
+  id: string;
+  /** Sheet header, e.g. "RETUR BEDRE NÆTTER/SENGEFABRIKKEN". */
+  title: string;
+  /** Sheet date (ISO yyyy-mm-dd), fully editable. */
+  date: string;
+  /** Optional pallet note, e.g. "2". */
+  pallet: string;
+  entries: LabelEntry[];
+  createdAt: string;
+}
+
 export type ShipmentStatus = 'pending' | 'in_transit' | 'out_for_delivery' | 'delivered' | 'delayed' | 'exception';
 export type Priority = 'low' | 'medium' | 'high' | 'critical';
 export type AlertType = 'delay' | 'low_stock' | 'route_change' | 'weather' | 'cost_spike' | 'customs';

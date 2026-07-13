@@ -1,0 +1,465 @@
+import { useRef, useState } from 'react';
+import {
+  Camera, ScanLine, Plus, Trash2, FileSpreadsheet, FileText,
+  Printer, Mail, RotateCw, Loader2, X, ChevronDown, ChevronUp, Check,
+} from 'lucide-react';
+import { clsx } from 'clsx';
+import { useLabelStore } from '../store/labelStore';
+import { fileToDataURL, rotateImage, scanLabel } from '../utils/ocr';
+import { exportExcel, exportWord, printBatch, emailBatch, formatLine } from '../utils/labelExport';
+import type { LabelEntry } from '../types';
+
+interface Draft {
+  photo?: string;
+  deliveryNumber: string;
+  referenceNumber: string;
+  quantity: string;
+  rawText: string;
+}
+
+const emptyDraft: Draft = { deliveryNumber: '', referenceNumber: '', quantity: '', rawText: '' };
+
+export function LabelExtractor() {
+  const {
+    batches, activeBatchId, activeBatch, createBatch, selectBatch, deleteBatch,
+    updateBatch, addEntry, updateEntry, deleteEntry,
+  } = useLabelStore();
+
+  const batch = activeBatch();
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const [draft, setDraft] = useState<Draft>(emptyDraft);
+  const [manualMode, setManualMode] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [showRaw, setShowRaw] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  if (!batch) return null;
+
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    const photo = await fileToDataURL(file);
+    setDraft({ ...emptyDraft, photo });
+    setShowRaw(false);
+    void runScan(photo);
+  }
+
+  async function runScan(photo: string) {
+    setScanning(true);
+    setProgress(0);
+    try {
+      const res = await scanLabel(photo, setProgress);
+      setDraft((d) => ({
+        ...d,
+        photo,
+        deliveryNumber: res.deliveryNumber,
+        referenceNumber: res.referenceNumber,
+        rawText: res.rawText,
+      }));
+    } catch (err) {
+      console.error('OCR failed', err);
+      setDraft((d) => ({ ...d, rawText: 'Could not read the image. Enter the numbers by hand.' }));
+    } finally {
+      setScanning(false);
+    }
+  }
+
+  async function rotateDraft() {
+    if (!draft.photo) return;
+    const rotated = await rotateImage(draft.photo, 90);
+    setDraft((d) => ({ ...d, photo: rotated }));
+  }
+
+  function commitDraft() {
+    if (!draft.deliveryNumber.trim() && !draft.referenceNumber.trim()) return;
+    addEntry(batch!.id, {
+      deliveryNumber: draft.deliveryNumber.trim(),
+      referenceNumber: draft.referenceNumber.trim(),
+      quantity: draft.quantity.trim(),
+      photo: draft.photo,
+    });
+    setDraft(emptyDraft);
+    setManualMode(false);
+    setShowRaw(false);
+  }
+
+  async function withBusy(key: string, fn: () => Promise<void> | void) {
+    setBusy(key);
+    try {
+      await fn();
+    } catch (err) {
+      console.error(err);
+      alert('Something went wrong generating the file.');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const canAdd = draft.deliveryNumber.trim() !== '' || draft.referenceNumber.trim() !== '';
+
+  return (
+    <div className="max-w-3xl mx-auto space-y-5 pb-16">
+      {/* Title */}
+      <div>
+        <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+          <ScanLine className="text-primary-400" /> Delivery Label Extractor
+        </h1>
+        <p className="text-surface-400 text-sm mt-1">
+          Photograph a label, capture the reference &amp; delivery numbers, and export a printable sheet.
+        </p>
+      </div>
+
+      {/* Batch selector */}
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          value={activeBatchId ?? ''}
+          onChange={(e) => selectBatch(e.target.value)}
+          className="bg-surface-800 border border-surface-700 rounded-lg px-3 py-2 text-sm text-white max-w-[60%]"
+        >
+          {batches.map((b) => (
+            <option key={b.id} value={b.id}>
+              {b.title || 'Untitled'} — {b.date} ({b.entries.length})
+            </option>
+          ))}
+        </select>
+        <button
+          onClick={createBatch}
+          className="flex items-center gap-1.5 bg-primary-600 hover:bg-primary-500 text-white text-sm font-medium rounded-lg px-3 py-2 transition-colors"
+        >
+          <Plus size={16} /> New sheet
+        </button>
+        {batches.length > 1 && (
+          <button
+            onClick={() => {
+              if (confirm('Delete this sheet and all its rows?')) deleteBatch(batch.id);
+            }}
+            className="flex items-center gap-1.5 text-rose-400 hover:text-rose-300 text-sm rounded-lg px-2 py-2"
+          >
+            <Trash2 size={16} />
+          </button>
+        )}
+      </div>
+
+      {/* Sheet header: title, date, pallet */}
+      <div className="bg-surface-900 border border-surface-800 rounded-xl p-4 grid gap-3 sm:grid-cols-2">
+        <label className="sm:col-span-2 block">
+          <span className="text-xs font-semibold text-surface-300 uppercase tracking-wide">Title</span>
+          <input
+            value={batch.title}
+            onChange={(e) => updateBatch(batch.id, { title: e.target.value })}
+            placeholder="e.g. RETUR BEDRE NÆTTER/SENGEFABRIKKEN"
+            className="mt-1 w-full bg-surface-800 border border-surface-700 rounded-lg px-3 py-2 text-white"
+          />
+        </label>
+        <label className="block">
+          <span className="text-xs font-semibold text-surface-300 uppercase tracking-wide">Date</span>
+          <input
+            type="date"
+            value={batch.date}
+            onChange={(e) => updateBatch(batch.id, { date: e.target.value })}
+            className="mt-1 w-full bg-surface-800 border border-surface-700 rounded-lg px-3 py-2 text-white"
+          />
+        </label>
+        <label className="block">
+          <span className="text-xs font-semibold text-surface-300 uppercase tracking-wide">Pallet (optional)</span>
+          <input
+            value={batch.pallet}
+            onChange={(e) => updateBatch(batch.id, { pallet: e.target.value })}
+            placeholder="e.g. 2"
+            className="mt-1 w-full bg-surface-800 border border-surface-700 rounded-lg px-3 py-2 text-white"
+          />
+        </label>
+      </div>
+
+      {/* Scan / add card */}
+      <div className="bg-surface-900 border border-surface-800 rounded-xl p-4 space-y-4">
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          onChange={handleFile}
+          className="hidden"
+        />
+
+        {!draft.photo && !manualMode ? (
+          <button
+            onClick={() => fileRef.current?.click()}
+            className="w-full flex flex-col items-center justify-center gap-2 border-2 border-dashed border-surface-700 hover:border-primary-500 rounded-xl py-8 text-surface-300 hover:text-white transition-colors"
+          >
+            <Camera size={32} className="text-primary-400" />
+            <span className="font-medium">Take a photo of a label</span>
+            <span className="text-xs text-surface-500">or choose an image — numbers are read automatically</span>
+          </button>
+        ) : (
+          <div className={clsx('grid gap-4', draft.photo && 'sm:grid-cols-[160px_1fr]')}>
+            {draft.photo && (
+            <div className="relative">
+              <img src={draft.photo} alt="label" className="w-full rounded-lg border border-surface-700 object-cover max-h-56" />
+              <div className="absolute top-1.5 right-1.5 flex gap-1">
+                <button
+                  onClick={rotateDraft}
+                  title="Rotate"
+                  className="bg-black/60 hover:bg-black/80 text-white rounded-md p-1.5"
+                >
+                  <RotateCw size={14} />
+                </button>
+                <button
+                  onClick={() => { setDraft(emptyDraft); setShowRaw(false); }}
+                  title="Remove"
+                  className="bg-black/60 hover:bg-black/80 text-white rounded-md p-1.5"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+              {scanning && (
+                <div className="absolute inset-0 bg-black/60 rounded-lg flex flex-col items-center justify-center gap-2 text-white text-sm">
+                  <Loader2 className="animate-spin" />
+                  Reading… {Math.round(progress * 100)}%
+                </div>
+              )}
+            </div>
+            )}
+
+            <div className="space-y-3">
+              <Field
+                label="Delivery number"
+                value={draft.deliveryNumber}
+                onChange={(v) => setDraft((d) => ({ ...d, deliveryNumber: v }))}
+                placeholder="NAKD1-8FL64"
+              />
+              <Field
+                label="Reference number"
+                value={draft.referenceNumber}
+                onChange={(v) => setDraft((d) => ({ ...d, referenceNumber: v }))}
+                placeholder="SRV010001"
+              />
+              <Field
+                label="CLL (quantity)"
+                value={draft.quantity}
+                onChange={(v) => setDraft((d) => ({ ...d, quantity: v }))}
+                placeholder="4"
+              />
+
+              <div className="flex flex-wrap gap-2 pt-1">
+                {draft.photo && (
+                  <button
+                    onClick={() => draft.photo && runScan(draft.photo)}
+                    disabled={scanning}
+                    className="flex items-center gap-1.5 text-sm bg-surface-800 hover:bg-surface-700 border border-surface-700 text-white rounded-lg px-3 py-2 disabled:opacity-50"
+                  >
+                    <ScanLine size={15} /> Re-scan
+                  </button>
+                )}
+                <button
+                  onClick={commitDraft}
+                  disabled={!canAdd}
+                  className="flex items-center gap-1.5 text-sm bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg px-4 py-2 font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <Plus size={16} /> Add to list
+                </button>
+                <button
+                  onClick={() => { setDraft(emptyDraft); setManualMode(false); setShowRaw(false); }}
+                  className="flex items-center gap-1.5 text-sm text-surface-400 hover:text-white rounded-lg px-3 py-2"
+                >
+                  Cancel
+                </button>
+              </div>
+
+              {draft.rawText && (
+                <div className="text-xs">
+                  <button
+                    onClick={() => setShowRaw((s) => !s)}
+                    className="flex items-center gap-1 text-surface-400 hover:text-white"
+                  >
+                    {showRaw ? <ChevronUp size={13} /> : <ChevronDown size={13} />} Raw scanned text
+                  </button>
+                  {showRaw && (
+                    <pre className="mt-1 whitespace-pre-wrap bg-surface-950 border border-surface-800 rounded-lg p-2 text-surface-400 max-h-32 overflow-auto">
+                      {draft.rawText}
+                    </pre>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {!draft.photo && !manualMode && (
+          <button
+            onClick={() => setManualMode(true)}
+            className="w-full text-center text-xs text-surface-400 hover:text-white"
+          >
+            No camera? Add a row by hand instead
+          </button>
+        )}
+      </div>
+
+      {/* Entries list */}
+      <div className="bg-surface-900 border border-surface-800 rounded-xl overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-surface-800">
+          <h2 className="font-semibold text-white">
+            Rows <span className="text-surface-400 font-normal">({batch.entries.length})</span>
+          </h2>
+        </div>
+
+        {batch.entries.length === 0 ? (
+          <div className="px-4 py-10 text-center text-surface-500 text-sm">
+            No rows yet. Scan a label above to get started.
+          </div>
+        ) : (
+          <ul className="divide-y divide-surface-800">
+            {batch.entries.map((entry, i) => (
+              <EntryRow
+                key={entry.id}
+                index={i}
+                entry={entry}
+                onSave={(patch) => updateEntry(batch.id, entry.id, patch)}
+                onDelete={() => deleteEntry(batch.id, entry.id)}
+              />
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {/* Export toolbar */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <ToolbarButton
+          onClick={() => withBusy('xlsx', () => exportExcel(batch))}
+          busy={busy === 'xlsx'}
+          disabled={batch.entries.length === 0}
+          icon={<FileSpreadsheet size={18} />}
+          label="Excel"
+          color="emerald"
+        />
+        <ToolbarButton
+          onClick={() => withBusy('docx', () => exportWord(batch))}
+          busy={busy === 'docx'}
+          disabled={batch.entries.length === 0}
+          icon={<FileText size={18} />}
+          label="Word"
+          color="blue"
+        />
+        <ToolbarButton
+          onClick={() => printBatch(batch)}
+          disabled={batch.entries.length === 0}
+          icon={<Printer size={18} />}
+          label="Print"
+          color="surface"
+        />
+        <ToolbarButton
+          onClick={() => emailBatch(batch)}
+          disabled={batch.entries.length === 0}
+          icon={<Mail size={18} />}
+          label="Email"
+          color="surface"
+        />
+      </div>
+    </div>
+  );
+}
+
+function Field({
+  label, value, onChange, placeholder,
+}: {
+  label: string; value: string; onChange: (v: string) => void; placeholder?: string;
+}) {
+  return (
+    <label className="block">
+      <span className="text-xs font-semibold text-surface-300 uppercase tracking-wide">{label}</span>
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="mt-1 w-full bg-surface-800 border border-surface-700 rounded-lg px-3 py-2 text-white font-mono"
+      />
+    </label>
+  );
+}
+
+function EntryRow({
+  index, entry, onSave, onDelete,
+}: {
+  index: number;
+  entry: LabelEntry;
+  onSave: (patch: Partial<LabelEntry>) => void;
+  onDelete: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [d, setD] = useState(entry.deliveryNumber);
+  const [r, setR] = useState(entry.referenceNumber);
+  const [q, setQ] = useState(entry.quantity);
+
+  function save() {
+    onSave({ deliveryNumber: d.trim(), referenceNumber: r.trim(), quantity: q.trim() });
+    setEditing(false);
+  }
+
+  if (editing) {
+    return (
+      <li className="p-3 bg-surface-950/40 grid gap-2 sm:grid-cols-[1fr_1fr_80px_auto]">
+        <input value={d} onChange={(e) => setD(e.target.value)} placeholder="Delivery" className="bg-surface-800 border border-surface-700 rounded px-2 py-1.5 text-sm text-white font-mono" />
+        <input value={r} onChange={(e) => setR(e.target.value)} placeholder="Reference" className="bg-surface-800 border border-surface-700 rounded px-2 py-1.5 text-sm text-white font-mono" />
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="CLL" className="bg-surface-800 border border-surface-700 rounded px-2 py-1.5 text-sm text-white font-mono" />
+        <div className="flex gap-1">
+          <button onClick={save} className="bg-emerald-600 hover:bg-emerald-500 text-white rounded px-2 py-1.5"><Check size={15} /></button>
+          <button onClick={() => setEditing(false)} className="bg-surface-800 hover:bg-surface-700 text-white rounded px-2 py-1.5"><X size={15} /></button>
+        </div>
+      </li>
+    );
+  }
+
+  return (
+    <li className="flex items-center gap-3 px-4 py-3 hover:bg-surface-800/40 group">
+      <span className="text-surface-500 text-sm w-6 text-right tabular-nums">{index + 1}</span>
+      {entry.photo && (
+        <img src={entry.photo} alt="" className="w-9 h-9 rounded object-cover border border-surface-700 flex-shrink-0" />
+      )}
+      <div className="min-w-0 flex-1">
+        <div className="font-mono text-sm text-white truncate">{formatLine(entry)}</div>
+        <div className="text-xs text-surface-500">
+          {entry.deliveryNumber || '—'} · ref {entry.referenceNumber || '—'}
+        </div>
+      </div>
+      <button onClick={() => { setD(entry.deliveryNumber); setR(entry.referenceNumber); setQ(entry.quantity); setEditing(true); }} className="text-surface-400 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity text-xs px-2 py-1">
+        Edit
+      </button>
+      <button onClick={onDelete} className="text-surface-500 hover:text-rose-400 p-1">
+        <Trash2 size={16} />
+      </button>
+    </li>
+  );
+}
+
+function ToolbarButton({
+  onClick, icon, label, color, busy, disabled,
+}: {
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+  color: 'emerald' | 'blue' | 'surface';
+  busy?: boolean;
+  disabled?: boolean;
+}) {
+  const colors = {
+    emerald: 'bg-emerald-600 hover:bg-emerald-500 text-white',
+    blue: 'bg-primary-600 hover:bg-primary-500 text-white',
+    surface: 'bg-surface-800 hover:bg-surface-700 text-white border border-surface-700',
+  };
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled || busy}
+      className={clsx(
+        'flex items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed',
+        colors[color]
+      )}
+    >
+      {busy ? <Loader2 size={18} className="animate-spin" /> : icon}
+      {label}
+    </button>
+  );
+}

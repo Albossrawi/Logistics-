@@ -9,12 +9,14 @@ import { RouteOptimizer } from './pages/RouteOptimizer';
 import { Analytics } from './pages/Analytics';
 import { AIAssistant } from './pages/AIAssistant';
 import { Settings } from './pages/Settings';
+import { LabelExtractor } from './pages/LabelExtractor';
 import { useAppStore } from './store/appStore';
 
 function PageContent() {
   const { activePage } = useAppStore();
 
   switch (activePage) {
+    case 'labels':      return <LabelExtractor />;
     case 'dashboard':   return <Dashboard />;
     case 'shipments':   return <Shipments />;
     case 'inventory':   return <Inventory />;
@@ -25,7 +27,7 @@ function PageContent() {
     case 'ai':          return <AIAssistant />;
     case 'map':         return <SupplyChain />;
     case 'settings':    return <Settings />;
-    default:            return <Dashboard />;
+    default:            return <LabelExtractor />;
   }
 }
 
