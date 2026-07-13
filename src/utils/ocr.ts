@@ -1,9 +1,37 @@
+import type { Worker as TesseractWorker } from 'tesseract.js';
+
 export interface ExtractionResult {
   deliveryNumber: string;
   referenceNumber: string;
   /** SSCC / long serial number at the bottom (digits only). */
   sscc: string;
   rawText: string;
+}
+
+// The Tesseract engine, worker, and English model are self-hosted under
+// /tesseract (see public/tesseract) so OCR works with no CDN dependency —
+// reliable on locked-down networks and after the first load, offline.
+const TESSERACT_PATHS = {
+  workerPath: '/tesseract/worker.min.js',
+  corePath: '/tesseract/tesseract-core-simd-lstm.wasm.js',
+  langPath: '/tesseract/lang',
+};
+
+let workerPromise: Promise<TesseractWorker> | null = null;
+let progressCb: ((p: number) => void) | undefined;
+
+/** Lazily create and cache one Tesseract worker for the session. */
+async function getWorker(): Promise<TesseractWorker> {
+  if (!workerPromise) {
+    const { createWorker } = await import('tesseract.js');
+    workerPromise = createWorker('eng', 1, {
+      ...TESSERACT_PATHS,
+      logger: (m: { status: string; progress: number }) => {
+        if (m.status === 'recognizing text' && progressCb) progressCb(m.progress);
+      },
+    });
+  }
+  return workerPromise;
 }
 
 /**
@@ -87,12 +115,14 @@ export async function scanLabel(
   onProgress?: (p: number) => void
 ): Promise<ExtractionResult> {
   const processed = await preprocess(dataUrl);
-  const Tesseract = await import('tesseract.js');
-  const { data } = await Tesseract.recognize(processed, 'eng', {
-    logger: (m) => {
-      if (m.status === 'recognizing text' && onProgress) onProgress(m.progress);
-    },
-  });
+  const worker = await getWorker();
+  progressCb = onProgress;
+  let data;
+  try {
+    ({ data } = await worker.recognize(processed));
+  } finally {
+    progressCb = undefined;
+  }
   const rawText = data.text || '';
   const { deliveryNumber, referenceNumber, sscc } = extractFields(rawText);
   return { deliveryNumber, referenceNumber, sscc, rawText };

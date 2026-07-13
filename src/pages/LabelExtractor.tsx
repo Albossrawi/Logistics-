@@ -221,7 +221,7 @@ export function LabelExtractor() {
                   <ScanLine size={15} /> On-device OCR
                 </div>
                 <div className="text-xs text-surface-400 mt-1">
-                  Free, no key, runs on your device. Less accurate on tricky labels.
+                  Free, no key, works offline — nothing leaves your device. Less accurate on tricky labels.
                 </div>
               </button>
               <button
