@@ -10,10 +10,13 @@ interface SettingsStore {
   apiKey: string;
   /** Vision model id. */
   model: string;
+  /** Auto-read and auto-add each photo, then reopen the camera. */
+  rapidCapture: boolean;
 
   setEngine: (e: ScanEngine) => void;
   setApiKey: (k: string) => void;
   setModel: (m: string) => void;
+  setRapidCapture: (v: boolean) => void;
 }
 
 export const AI_MODELS = [
@@ -27,9 +30,11 @@ export const useSettingsStore = create<SettingsStore>()(
       engine: 'ocr',
       apiKey: '',
       model: 'claude-opus-4-8',
+      rapidCapture: false,
       setEngine: (engine) => set({ engine }),
       setApiKey: (apiKey) => set({ apiKey }),
       setModel: (model) => set({ model }),
+      setRapidCapture: (rapidCapture) => set({ rapidCapture }),
     }),
     { name: 'delivery-labels-settings' }
   )

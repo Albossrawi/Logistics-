@@ -23,9 +23,16 @@ Each row is written as `NAKD1-8FL64/SRV010001 - 7 CLL`, exactly like the manual 
    are always editable. Enter the **CLL** (number of colli) and tap
    *Add to list*. No camera? Use *Add a row by hand*.
 
+   **Rapid capture** (toggle above the camera): each photo is read and added
+   as a row automatically — no review/Add tap. On desktop the camera reopens
+   itself; on phones tap *Take next photo* for the next label. Rows land in the
+   list fully editable, and if a scan finds nothing it drops into the manual
+   card so you can type it.
+
    **Two readers** (switch with the *Reader* button, top-right):
-   - **On-device OCR** (default) — free, private, works offline; less accurate
-     on wrinkled/angled photos.
+   - **On-device OCR** (default) — free, no key, runs on your device; less
+     accurate on wrinkled/angled photos. (Downloads its OCR engine from a CDN
+     on first use.)
    - **Smart read (AI)** — Claude vision reads even messy labels far more
      reliably. Paste an Anthropic API key once (stored only in your browser;
      usage is billed to your account) and pick a model (Opus 4.8 for accuracy,

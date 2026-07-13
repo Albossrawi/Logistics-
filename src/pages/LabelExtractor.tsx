@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import {
   Camera, ScanLine, Plus, Trash2, FileSpreadsheet, FileText,
   Printer, Mail, RotateCw, Loader2, X, ChevronDown, ChevronUp, Check,
-  Sparkles, Settings2, Eye, EyeOff,
+  Sparkles, Settings2, Eye, EyeOff, Zap,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useLabelStore } from '../store/labelStore';
@@ -28,7 +28,7 @@ export function LabelExtractor() {
     updateBatch, addEntry, updateEntry, deleteEntry,
   } = useLabelStore();
 
-  const { engine, apiKey, model, setEngine, setApiKey, setModel } = useSettingsStore();
+  const { engine, apiKey, model, rapidCapture, setEngine, setApiKey, setModel, setRapidCapture } = useSettingsStore();
 
   const batch = activeBatch();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -42,6 +42,8 @@ export function LabelExtractor() {
   const [showSettings, setShowSettings] = useState(false);
   const [showKey, setShowKey] = useState(false);
   const [engineNote, setEngineNote] = useState('');
+  const [rapidCount, setRapidCount] = useState(0);
+  const [rapidLast, setRapidLast] = useState('');
 
   const aiActive = engine === 'ai' && apiKey.trim() !== '';
 
@@ -52,9 +54,29 @@ export function LabelExtractor() {
     e.target.value = '';
     if (!file) return;
     const photo = await fileToDataURL(file);
-    setDraft({ ...emptyDraft, photo });
     setShowRaw(false);
-    void runScan(photo);
+    if (rapidCapture) {
+      void rapidScanAndAdd(photo);
+    } else {
+      setDraft({ ...emptyDraft, photo });
+      void runScan(photo);
+    }
+  }
+
+  /** Read a photo with the active engine (AI with OCR fallback, or OCR). */
+  async function performScan(photo: string): Promise<{ delivery: string; reference: string; rawText: string; note: string }> {
+    if (aiActive) {
+      try {
+        const r = await scanLabelAI(photo, { apiKey: apiKey.trim(), model });
+        return { delivery: r.deliveryNumber, reference: r.referenceNumber, rawText: r.rawText, note: 'Read with AI (Claude vision)' };
+      } catch (err) {
+        console.error('AI vision failed, falling back to on-device OCR', err);
+        const r = await scanLabel(photo, setProgress);
+        return { delivery: r.deliveryNumber, reference: r.referenceNumber, rawText: r.rawText, note: 'AI read failed — used on-device OCR instead. Check your API key in settings.' };
+      }
+    }
+    const r = await scanLabel(photo, setProgress);
+    return { delivery: r.deliveryNumber, reference: r.referenceNumber, rawText: r.rawText, note: '' };
   }
 
   async function runScan(photo: string) {
@@ -62,29 +84,43 @@ export function LabelExtractor() {
     setProgress(0);
     setEngineNote('');
     try {
-      let res;
-      if (aiActive) {
-        try {
-          res = await scanLabelAI(photo, { apiKey: apiKey.trim(), model });
-          setEngineNote('Read with AI (Claude vision)');
-        } catch (err) {
-          console.error('AI vision failed, falling back to on-device OCR', err);
-          setEngineNote('AI read failed — used on-device OCR instead. Check your API key in settings.');
-          res = await scanLabel(photo, setProgress);
-        }
-      } else {
-        res = await scanLabel(photo, setProgress);
-      }
-      setDraft((d) => ({
-        ...d,
-        photo,
-        deliveryNumber: res.deliveryNumber,
-        referenceNumber: res.referenceNumber,
-        rawText: res.rawText,
-      }));
+      const { delivery, reference, rawText, note } = await performScan(photo);
+      setEngineNote(note);
+      setDraft((d) => ({ ...d, photo, deliveryNumber: delivery, referenceNumber: reference, rawText }));
     } catch (err) {
       console.error('Scan failed', err);
       setDraft((d) => ({ ...d, rawText: 'Could not read the image. Enter the numbers by hand.' }));
+    } finally {
+      setScanning(false);
+    }
+  }
+
+  /** Rapid mode: scan, auto-add the row, then reopen the camera for the next shot. */
+  async function rapidScanAndAdd(photo: string) {
+    setScanning(true);
+    setProgress(0);
+    setEngineNote('');
+    try {
+      const { delivery, reference, rawText, note } = await performScan(photo);
+      setEngineNote(note);
+      if (delivery.trim() || reference.trim()) {
+        addEntry(batch!.id, {
+          deliveryNumber: delivery.trim(),
+          referenceNumber: reference.trim(),
+          quantity: '',
+          photo,
+        });
+        setRapidCount((c) => c + 1);
+        setRapidLast(delivery.trim() || reference.trim());
+        // Best-effort auto-reopen (works on desktop; phones need the tap below).
+        window.setTimeout(() => fileRef.current?.click(), 400);
+      } else {
+        // Nothing detected — fall into the review card so it can be typed by hand.
+        setDraft({ ...emptyDraft, photo, rawText: rawText || 'No numbers detected — enter them by hand.' });
+      }
+    } catch (err) {
+      console.error('Rapid scan failed', err);
+      setDraft({ ...emptyDraft, photo, rawText: 'Could not read the image. Enter the numbers by hand.' });
     } finally {
       setScanning(false);
     }
@@ -166,7 +202,7 @@ export function LabelExtractor() {
                   <ScanLine size={15} /> On-device OCR
                 </div>
                 <div className="text-xs text-surface-400 mt-1">
-                  Free, private, works offline. Less accurate on tricky labels.
+                  Free, no key, runs on your device. Less accurate on tricky labels.
                 </div>
               </button>
               <button
@@ -311,14 +347,66 @@ export function LabelExtractor() {
         />
 
         {!draft.photo && !manualMode ? (
-          <button
-            onClick={() => fileRef.current?.click()}
-            className="w-full flex flex-col items-center justify-center gap-2 border-2 border-dashed border-surface-700 hover:border-primary-500 rounded-xl py-8 text-surface-300 hover:text-white transition-colors"
-          >
-            <Camera size={32} className="text-primary-400" />
-            <span className="font-medium">Take a photo of a label</span>
-            <span className="text-xs text-surface-500">or choose an image — numbers are read automatically</span>
-          </button>
+          <div className="space-y-3">
+            {/* Rapid capture toggle */}
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-surface-800 bg-surface-950/40 px-3 py-2">
+              <span className="flex items-center gap-2 text-sm text-white">
+                <Zap size={15} className={rapidCapture ? 'text-amber-400' : 'text-surface-400'} />
+                Rapid capture
+                <span className="text-xs text-surface-500 hidden sm:inline">— auto-add each shot</span>
+              </span>
+              <button
+                role="switch"
+                aria-checked={rapidCapture}
+                onClick={() => { setRapidCapture(!rapidCapture); setRapidCount(0); setRapidLast(''); }}
+                className={clsx(
+                  'relative w-11 h-6 rounded-full transition-colors flex-shrink-0',
+                  rapidCapture ? 'bg-amber-500' : 'bg-surface-700'
+                )}
+              >
+                <span className={clsx(
+                  'absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform',
+                  rapidCapture && 'translate-x-5'
+                )} />
+              </button>
+            </div>
+
+            {scanning ? (
+              <div className="w-full flex flex-col items-center justify-center gap-2 border-2 border-dashed border-surface-700 rounded-xl py-8 text-surface-300">
+                <Loader2 size={28} className="animate-spin text-primary-400" />
+                <span className="text-sm">{aiActive ? 'Reading with AI…' : `Reading… ${Math.round(progress * 100)}%`}</span>
+              </div>
+            ) : (
+              <button
+                onClick={() => fileRef.current?.click()}
+                className="w-full flex flex-col items-center justify-center gap-2 border-2 border-dashed border-surface-700 hover:border-primary-500 rounded-xl py-8 text-surface-300 hover:text-white transition-colors"
+              >
+                <Camera size={32} className="text-primary-400" />
+                <span className="font-medium">
+                  {rapidCapture
+                    ? (rapidCount > 0 ? 'Take next photo' : 'Take a photo — rapid mode')
+                    : 'Take a photo of a label'}
+                </span>
+                <span className="text-xs text-surface-500">
+                  {rapidCapture
+                    ? 'Each shot is read and added automatically'
+                    : 'or choose an image — numbers are read automatically'}
+                </span>
+              </button>
+            )}
+
+            {rapidCapture && rapidCount > 0 && (
+              <p className="text-xs text-emerald-400 flex items-center gap-1">
+                <Check size={13} /> {rapidCount} added{rapidLast ? ` · last: ${rapidLast}` : ''}. Fix values or CLL in the list below.
+              </p>
+            )}
+            {rapidCapture && engineNote && (
+              <p className={clsx('text-xs flex items-center gap-1', engineNote.startsWith('AI read failed') ? 'text-amber-400' : 'text-violet-300')}>
+                {!engineNote.startsWith('AI read failed') && <Sparkles size={12} />}
+                {engineNote}
+              </p>
+            )}
+          </div>
         ) : (
           <div className={clsx('grid gap-4', draft.photo && 'sm:grid-cols-[160px_1fr]')}>
             {draft.photo && (
