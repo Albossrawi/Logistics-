@@ -64,5 +64,4 @@ npm run build    # type-check + production build
 npm run lint     # eslint
 ```
 
-> This repo also contains a separate `LogisticAI` analytics dashboard (reachable
-> from the sidebar); the Label Extractor is the default landing page.
+Deploys as a static site — `npm run build` outputs to `dist/` (see `netlify.toml`).

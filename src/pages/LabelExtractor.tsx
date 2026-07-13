@@ -125,16 +125,11 @@ export function LabelExtractor() {
 
   return (
     <div className="max-w-3xl mx-auto space-y-5 pb-16">
-      {/* Title */}
+      {/* Intro + reader settings */}
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-            <ScanLine className="text-primary-400" /> Delivery Label Extractor
-          </h1>
-          <p className="text-surface-400 text-sm mt-1">
-            Photograph a label, capture the reference &amp; delivery numbers, and export a printable sheet.
-          </p>
-        </div>
+        <p className="text-surface-400 text-sm">
+          Photograph a label, capture the reference &amp; delivery numbers, and export a printable sheet.
+        </p>
         <button
           onClick={() => setShowSettings((s) => !s)}
           className={clsx(
