@@ -347,31 +347,31 @@ export function LabelExtractor() {
 
       {/* Sheet header: title, date, pallet */}
       <div className="bg-surface-900 border border-surface-800 rounded-xl p-4 grid gap-3 sm:grid-cols-2">
-        <label className="sm:col-span-2 block">
+        <label className="sm:col-span-2 block min-w-0">
           <span className="text-xs font-semibold text-surface-300 uppercase tracking-wide">Title</span>
           <input
             value={batch.title}
             onChange={(e) => updateBatch(batch.id, { title: e.target.value })}
             placeholder="e.g. RETUR BEDRE NÆTTER/SENGEFABRIKKEN"
-            className="mt-1 w-full bg-surface-800 border border-surface-700 rounded-lg px-3 py-2 text-white"
+            className="mt-1 w-full min-w-0 bg-surface-800 border border-surface-700 rounded-lg px-3 py-2 text-white"
           />
         </label>
-        <label className="block">
+        <label className="block min-w-0">
           <span className="text-xs font-semibold text-surface-300 uppercase tracking-wide">Date</span>
           <input
             type="date"
             value={batch.date}
             onChange={(e) => updateBatch(batch.id, { date: e.target.value })}
-            className="mt-1 w-full bg-surface-800 border border-surface-700 rounded-lg px-3 py-2 text-white"
+            className="mt-1 block w-full min-w-0 max-w-full bg-surface-800 border border-surface-700 rounded-lg px-3 py-2 text-white appearance-none sm:appearance-auto"
           />
         </label>
-        <label className="block">
+        <label className="block min-w-0">
           <span className="text-xs font-semibold text-surface-300 uppercase tracking-wide">Pallet (optional)</span>
           <input
             value={batch.pallet}
             onChange={(e) => updateBatch(batch.id, { pallet: e.target.value })}
             placeholder="e.g. 2"
-            className="mt-1 w-full bg-surface-800 border border-surface-700 rounded-lg px-3 py-2 text-white"
+            className="mt-1 w-full min-w-0 bg-surface-800 border border-surface-700 rounded-lg px-3 py-2 text-white"
           />
         </label>
       </div>
