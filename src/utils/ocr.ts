@@ -183,19 +183,41 @@ export function extractFields(raw: string): { deliveryNumber: string; referenceN
   }
 
   // --- SSCC / long serial number (bottom barcode) ---
-  // The SSCC is the longest run of digits on the label (18 digits, often with a
-  // "(00)" prefix). Pick the line with the most digits, ignoring short numbers
-  // like the postcode barcode "(421) 2088200".
+  // The SSCC is the longest number on the label (18 digits, often with a "(00)"
+  // prefix). Find long tokens made of digits or common OCR digit-lookalikes,
+  // normalise the lookalikes back to digits, and keep the longest — but only if
+  // the token was already mostly real digits (so words don't get mistaken for a
+  // serial). Skips short numbers like the postcode "(421) 2088200".
   {
     let best = '';
-    for (const line of lines) {
-      const digits = line.replace(/[^0-9]/g, '');
-      if (digits.length >= 12 && digits.length > best.length) best = digits;
+    // Candidate = run of digits and digit-lookalike letters (not C/other letters,
+    // which break a real serial token like "SSCC (00) 3707…").
+    const CANDIDATE = /[0-9OQDILZSGTB]{12,}/g;
+    for (const m of text.matchAll(CANDIDATE)) {
+      const token = m[0];
+      const realDigits = (token.match(/[0-9]/g) ?? []).length;
+      if (realDigits < 8) continue; // likely a word, not a number
+      const norm = normalizeDigits(token);
+      if (norm.length > best.length) best = norm;
     }
     sscc = best;
   }
 
   return { deliveryNumber, referenceNumber, sscc };
+}
+
+/** Map common OCR letter↔digit confusions to digits (for all-numeric fields). */
+function normalizeDigits(s: string): string {
+  return s
+    .toUpperCase()
+    .replace(/[OQD]/g, '0')
+    .replace(/[IL|!]/g, '1')
+    .replace(/Z/g, '2')
+    .replace(/S/g, '5')
+    .replace(/G/g, '6')
+    .replace(/T/g, '7')
+    .replace(/B/g, '8')
+    .replace(/[^0-9]/g, '');
 }
 
 function clean(s: string): string {
