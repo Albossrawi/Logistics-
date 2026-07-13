@@ -29,6 +29,14 @@ Each row is written as `NAKD1-8FL64/SRV010001 - 7 CLL`, exactly like the manual 
    list fully editable, and if a scan finds nothing it drops into the manual
    card so you can type it.
 
+   **Count CLL from packages** (toggle in *Reader* settings): for reconciling
+   returns, scan every box. The app also reads the **SSCC serial number** (the
+   long barcode at the bottom, unique per box), groups scans by delivery number,
+   and sets **CLL = the number of different SSCCs** scanned. Re-scanning the same
+   box won't double-count. The sheet then shows one line per delivery number
+   (e.g. `NAKD1-8FL64/SRV010001 - 4 CLL`); expand a delivery to see/remove its
+   individual boxes.
+
    **Two readers** (switch with the *Reader* button, top-right):
    - **On-device OCR** (default) — free, no key, runs on your device; less
      accurate on wrinkled/angled photos. (Downloads its OCR engine from a CDN

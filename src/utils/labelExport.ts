@@ -1,7 +1,8 @@
-import type { LabelBatch, LabelEntry } from '../types';
+import type { LabelBatch } from '../types';
+import type { OutputRow } from './grouping';
 
 /** Combined line as written on the manual sheet: NAKD1-8FL64/SRV010001 - 4 CLL */
-export function formatLine(e: LabelEntry): string {
+export function formatLine(e: OutputRow): string {
   const del = e.deliveryNumber.trim();
   const ref = e.referenceNumber.trim();
   const qty = e.quantity.trim();
@@ -38,7 +39,7 @@ function downloadBlob(blob: Blob, filename: string) {
 
 /* ------------------------------- Word (.docx) ------------------------------ */
 
-export async function exportWord(batch: LabelBatch): Promise<void> {
+export async function exportWord(batch: LabelBatch, rows: OutputRow[]): Promise<void> {
   const {
     Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType,
     Table, TableRow, TableCell, WidthType, BorderStyle,
@@ -71,7 +72,7 @@ export async function exportWord(batch: LabelBatch): Promise<void> {
     ),
   });
 
-  const bodyRows = batch.entries.map((e, i) =>
+  const bodyRows = rows.map((e, i) =>
     new TableRow({
       children: [
         cell(String(i + 1)),
@@ -109,7 +110,7 @@ export async function exportWord(batch: LabelBatch): Promise<void> {
           new Paragraph({
             children: [
               new TextRun({
-                text: `Total rows: ${batch.entries.length}`,
+                text: `Total rows: ${rows.length}`,
                 italics: true,
                 size: 20,
               }),
@@ -126,7 +127,7 @@ export async function exportWord(batch: LabelBatch): Promise<void> {
 
 /* ------------------------------ Excel (.xlsx) ------------------------------ */
 
-export async function exportExcel(batch: LabelBatch): Promise<void> {
+export async function exportExcel(batch: LabelBatch, rows: OutputRow[]): Promise<void> {
   const ExcelJS = (await import('exceljs')).default;
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Delivery Label Extractor';
@@ -158,7 +159,7 @@ export async function exportExcel(batch: LabelBatch): Promise<void> {
     c.border = { bottom: { style: 'thin' } };
   });
 
-  batch.entries.forEach((e, i) => {
+  rows.forEach((e, i) => {
     ws.addRow({
       idx: i + 1,
       delivery: e.deliveryNumber,
@@ -179,8 +180,8 @@ export async function exportExcel(batch: LabelBatch): Promise<void> {
 
 /* --------------------------------- Print ---------------------------------- */
 
-export function printBatch(batch: LabelBatch): void {
-  const rows = batch.entries
+export function printBatch(batch: LabelBatch, rows: OutputRow[]): void {
+  const rowsHtml = rows
     .map(
       (e, i) => `
       <tr>
@@ -213,8 +214,8 @@ export function printBatch(batch: LabelBatch): void {
       }</div>
       <table>
         <thead><tr><th class="num">#</th><th>Delivery number</th><th>Reference</th><th class="num">CLL</th></tr></thead>
-        <tbody>${rows || '<tr><td colspan="4">No entries</td></tr>'}</tbody>
-        <tfoot><tr><td colspan="4">Total rows: ${batch.entries.length}</td></tr></tfoot>
+        <tbody>${rowsHtml || '<tr><td colspan="4">No entries</td></tr>'}</tbody>
+        <tfoot><tr><td colspan="4">Total rows: ${rows.length}</td></tr></tfoot>
       </table>
       <script>window.onload = function(){ window.print(); }</script>
     </body></html>`;
@@ -231,16 +232,16 @@ export function printBatch(batch: LabelBatch): void {
 
 /* --------------------------------- Email ---------------------------------- */
 
-export function emailBatch(batch: LabelBatch): void {
+export function emailBatch(batch: LabelBatch, rows: OutputRow[]): void {
   const subject = `${batch.title} — ${formatDate(batch.date)}`;
-  const lines = batch.entries.map((e, i) => `${i + 1}. ${formatLine(e)}`);
+  const lines = rows.map((e, i) => `${i + 1}. ${formatLine(e)}`);
   const body = [
     batch.title,
     `DATO: ${formatDate(batch.date)}${batch.pallet ? `   PALLE: ${batch.pallet}` : ''}`,
     '',
     ...lines,
     '',
-    `Total rows: ${batch.entries.length}`,
+    `Total rows: ${rows.length}`,
     '',
     '(Tip: attach the Excel or Word file you downloaded.)',
   ].join('\n');

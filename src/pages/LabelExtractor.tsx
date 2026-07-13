@@ -10,17 +10,20 @@ import { useSettingsStore, AI_MODELS } from '../store/settingsStore';
 import { fileToDataURL, rotateImage, scanLabel } from '../utils/ocr';
 import { scanLabelAI } from '../utils/aiVision';
 import { exportExcel, exportWord, printBatch, emailBatch, formatLine } from '../utils/labelExport';
+import { groupByDelivery, flatRows, isDuplicatePackage } from '../utils/grouping';
+import type { DeliveryGroup } from '../utils/grouping';
 import type { LabelEntry } from '../types';
 
 interface Draft {
   photo?: string;
   deliveryNumber: string;
   referenceNumber: string;
+  sscc: string;
   quantity: string;
   rawText: string;
 }
 
-const emptyDraft: Draft = { deliveryNumber: '', referenceNumber: '', quantity: '', rawText: '' };
+const emptyDraft: Draft = { deliveryNumber: '', referenceNumber: '', sscc: '', quantity: '', rawText: '' };
 
 export function LabelExtractor() {
   const {
@@ -28,7 +31,7 @@ export function LabelExtractor() {
     updateBatch, addEntry, updateEntry, deleteEntry,
   } = useLabelStore();
 
-  const { engine, apiKey, model, rapidCapture, setEngine, setApiKey, setModel, setRapidCapture } = useSettingsStore();
+  const { engine, apiKey, model, rapidCapture, autoCll, setEngine, setApiKey, setModel, setRapidCapture, setAutoCll } = useSettingsStore();
 
   const batch = activeBatch();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -64,19 +67,19 @@ export function LabelExtractor() {
   }
 
   /** Read a photo with the active engine (AI with OCR fallback, or OCR). */
-  async function performScan(photo: string): Promise<{ delivery: string; reference: string; rawText: string; note: string }> {
+  async function performScan(photo: string): Promise<{ delivery: string; reference: string; sscc: string; rawText: string; note: string }> {
     if (aiActive) {
       try {
         const r = await scanLabelAI(photo, { apiKey: apiKey.trim(), model });
-        return { delivery: r.deliveryNumber, reference: r.referenceNumber, rawText: r.rawText, note: 'Read with AI (Claude vision)' };
+        return { delivery: r.deliveryNumber, reference: r.referenceNumber, sscc: r.sscc, rawText: r.rawText, note: 'Read with AI (Claude vision)' };
       } catch (err) {
         console.error('AI vision failed, falling back to on-device OCR', err);
         const r = await scanLabel(photo, setProgress);
-        return { delivery: r.deliveryNumber, reference: r.referenceNumber, rawText: r.rawText, note: 'AI read failed — used on-device OCR instead. Check your API key in settings.' };
+        return { delivery: r.deliveryNumber, reference: r.referenceNumber, sscc: r.sscc, rawText: r.rawText, note: 'AI read failed — used on-device OCR instead. Check your API key in settings.' };
       }
     }
     const r = await scanLabel(photo, setProgress);
-    return { delivery: r.deliveryNumber, reference: r.referenceNumber, rawText: r.rawText, note: '' };
+    return { delivery: r.deliveryNumber, reference: r.referenceNumber, sscc: r.sscc, rawText: r.rawText, note: '' };
   }
 
   async function runScan(photo: string) {
@@ -84,9 +87,9 @@ export function LabelExtractor() {
     setProgress(0);
     setEngineNote('');
     try {
-      const { delivery, reference, rawText, note } = await performScan(photo);
+      const { delivery, reference, sscc, rawText, note } = await performScan(photo);
       setEngineNote(note);
-      setDraft((d) => ({ ...d, photo, deliveryNumber: delivery, referenceNumber: reference, rawText }));
+      setDraft((d) => ({ ...d, photo, deliveryNumber: delivery, referenceNumber: reference, sscc, rawText }));
     } catch (err) {
       console.error('Scan failed', err);
       setDraft((d) => ({ ...d, rawText: 'Could not read the image. Enter the numbers by hand.' }));
@@ -101,19 +104,26 @@ export function LabelExtractor() {
     setProgress(0);
     setEngineNote('');
     try {
-      const { delivery, reference, rawText, note } = await performScan(photo);
+      const { delivery, reference, sscc, rawText, note } = await performScan(photo);
       setEngineNote(note);
       if (delivery.trim() || reference.trim()) {
-        addEntry(batch!.id, {
-          deliveryNumber: delivery.trim(),
-          referenceNumber: reference.trim(),
-          quantity: '',
-          photo,
-        });
-        setRapidCount((c) => c + 1);
-        setRapidLast(delivery.trim() || reference.trim());
-        // Best-effort auto-reopen (works on desktop; phones need the tap below).
-        window.setTimeout(() => fileRef.current?.click(), 400);
+        // In auto-CLL mode, skip a box already counted (same delivery + SSCC).
+        if (autoCll && isDuplicatePackage(batch!.entries, delivery, sscc)) {
+          setRapidLast(`${delivery.trim()} · already counted`);
+          window.setTimeout(() => fileRef.current?.click(), 400);
+        } else {
+          addEntry(batch!.id, {
+            deliveryNumber: delivery.trim(),
+            referenceNumber: reference.trim(),
+            sscc: sscc.trim(),
+            quantity: '',
+            photo,
+          });
+          setRapidCount((c) => c + 1);
+          setRapidLast(delivery.trim() || reference.trim());
+          // Best-effort auto-reopen (works on desktop; phones need the tap below).
+          window.setTimeout(() => fileRef.current?.click(), 400);
+        }
       } else {
         // Nothing detected — fall into the review card so it can be typed by hand.
         setDraft({ ...emptyDraft, photo, rawText: rawText || 'No numbers detected — enter them by hand.' });
@@ -134,9 +144,14 @@ export function LabelExtractor() {
 
   function commitDraft() {
     if (!draft.deliveryNumber.trim() && !draft.referenceNumber.trim()) return;
+    if (autoCll && isDuplicatePackage(batch!.entries, draft.deliveryNumber, draft.sscc)) {
+      alert('That package (same delivery + serial number) is already counted.');
+      return;
+    }
     addEntry(batch!.id, {
       deliveryNumber: draft.deliveryNumber.trim(),
       referenceNumber: draft.referenceNumber.trim(),
+      sscc: draft.sscc.trim(),
       quantity: draft.quantity.trim(),
       photo: draft.photo,
     });
@@ -158,6 +173,10 @@ export function LabelExtractor() {
   }
 
   const canAdd = draft.deliveryNumber.trim() !== '' || draft.referenceNumber.trim() !== '';
+
+  // Rows for display/export: grouped-by-delivery (auto CLL) or one per scan.
+  const groups = groupByDelivery(batch.entries);
+  const outputRows = autoCll ? groups : flatRows(batch.entries);
 
   return (
     <div className="max-w-3xl mx-auto space-y-5 pb-16">
@@ -222,6 +241,28 @@ export function LabelExtractor() {
                 </div>
               </button>
             </div>
+          </div>
+
+          {/* Auto CLL counting */}
+          <div className="border-t border-surface-800 pt-3">
+            <div className="flex items-center justify-between gap-3">
+              <span className="flex items-center gap-2 text-sm text-white">
+                <Check size={15} className={autoCll ? 'text-emerald-400' : 'text-surface-400'} />
+                Count CLL from packages
+              </span>
+              <button
+                role="switch"
+                aria-checked={autoCll}
+                onClick={() => setAutoCll(!autoCll)}
+                className={clsx('relative w-11 h-6 rounded-full transition-colors flex-shrink-0', autoCll ? 'bg-emerald-500' : 'bg-surface-700')}
+              >
+                <span className={clsx('absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform', autoCll && 'translate-x-5')} />
+              </button>
+            </div>
+            <p className="text-xs text-surface-500 mt-1.5">
+              Scan every box: the sheet shows one line per delivery number, and CLL = how many
+              different package serial numbers (SSCC) you scanned. Re-scanning the same box won't count twice.
+            </p>
           </div>
 
           {engine === 'ai' && (
@@ -450,12 +491,21 @@ export function LabelExtractor() {
                 onChange={(v) => setDraft((d) => ({ ...d, referenceNumber: v }))}
                 placeholder="SRV010001"
               />
-              <Field
-                label="CLL (quantity)"
-                value={draft.quantity}
-                onChange={(v) => setDraft((d) => ({ ...d, quantity: v }))}
-                placeholder="4"
-              />
+              {autoCll ? (
+                <Field
+                  label="Package no. (SSCC)"
+                  value={draft.sscc}
+                  onChange={(v) => setDraft((d) => ({ ...d, sscc: v }))}
+                  placeholder="370733747952374111"
+                />
+              ) : (
+                <Field
+                  label="CLL (quantity)"
+                  value={draft.quantity}
+                  onChange={(v) => setDraft((d) => ({ ...d, quantity: v }))}
+                  placeholder="4"
+                />
+              )}
 
               {engineNote && (
                 <p className={clsx(
@@ -525,7 +575,10 @@ export function LabelExtractor() {
       <div className="bg-surface-900 border border-surface-800 rounded-xl overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3 border-b border-surface-800">
           <h2 className="font-semibold text-white">
-            Rows <span className="text-surface-400 font-normal">({batch.entries.length})</span>
+            {autoCll ? 'Deliveries' : 'Rows'}{' '}
+            <span className="text-surface-400 font-normal">
+              ({autoCll ? `${groups.length} · ${batch.entries.length} scans` : batch.entries.length})
+            </span>
           </h2>
         </div>
 
@@ -533,6 +586,17 @@ export function LabelExtractor() {
           <div className="px-4 py-10 text-center text-surface-500 text-sm">
             No rows yet. Scan a label above to get started.
           </div>
+        ) : autoCll ? (
+          <ul className="divide-y divide-surface-800">
+            {groups.map((g, i) => (
+              <GroupRow
+                key={g.deliveryNumber || i}
+                index={i}
+                group={g}
+                onDeletePackage={(entryId) => deleteEntry(batch.id, entryId)}
+              />
+            ))}
+          </ul>
         ) : (
           <ul className="divide-y divide-surface-800">
             {batch.entries.map((entry, i) => (
@@ -551,31 +615,31 @@ export function LabelExtractor() {
       {/* Export toolbar */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         <ToolbarButton
-          onClick={() => withBusy('xlsx', () => exportExcel(batch))}
+          onClick={() => withBusy('xlsx', () => exportExcel(batch, outputRows))}
           busy={busy === 'xlsx'}
-          disabled={batch.entries.length === 0}
+          disabled={outputRows.length === 0}
           icon={<FileSpreadsheet size={18} />}
           label="Excel"
           color="emerald"
         />
         <ToolbarButton
-          onClick={() => withBusy('docx', () => exportWord(batch))}
+          onClick={() => withBusy('docx', () => exportWord(batch, outputRows))}
           busy={busy === 'docx'}
-          disabled={batch.entries.length === 0}
+          disabled={outputRows.length === 0}
           icon={<FileText size={18} />}
           label="Word"
           color="blue"
         />
         <ToolbarButton
-          onClick={() => printBatch(batch)}
-          disabled={batch.entries.length === 0}
+          onClick={() => printBatch(batch, outputRows)}
+          disabled={outputRows.length === 0}
           icon={<Printer size={18} />}
           label="Print"
           color="surface"
         />
         <ToolbarButton
-          onClick={() => emailBatch(batch)}
-          disabled={batch.entries.length === 0}
+          onClick={() => emailBatch(batch, outputRows)}
+          disabled={outputRows.length === 0}
           icon={<Mail size={18} />}
           label="Email"
           color="surface"
@@ -600,6 +664,59 @@ function Field({
         className="mt-1 w-full bg-surface-800 border border-surface-700 rounded-lg px-3 py-2 text-white font-mono"
       />
     </label>
+  );
+}
+
+function GroupRow({
+  index, group, onDeletePackage,
+}: {
+  index: number;
+  group: DeliveryGroup;
+  onDeletePackage: (entryId: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const cll = group.ssccs.length;
+
+  return (
+    <li className="px-4 py-3">
+      <div className="flex items-center gap-3">
+        <span className="text-surface-500 text-sm w-6 text-right tabular-nums">{index + 1}</span>
+        <div className="min-w-0 flex-1">
+          <div className="font-mono text-sm text-white truncate">{formatLine(group)}</div>
+          <div className="text-xs text-surface-500">
+            {group.deliveryNumber || '—'} · ref {group.referenceNumber || '—'}
+          </div>
+        </div>
+        <span className="text-xs font-semibold px-2 py-1 rounded-full bg-emerald-500/20 text-emerald-300 flex-shrink-0">
+          {cll} CLL
+        </span>
+        <button
+          onClick={() => setOpen((o) => !o)}
+          className="text-surface-400 hover:text-white p-1"
+          aria-label="Show packages"
+        >
+          {open ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+        </button>
+      </div>
+
+      {open && (
+        <ul className="mt-2 ml-9 space-y-1">
+          {group.ssccs.map((s, i) => (
+            <li key={group.entryIds[i]} className="flex items-center gap-2 text-xs text-surface-300">
+              <span className="text-surface-500 w-5 text-right tabular-nums">{i + 1}</span>
+              <span className="font-mono truncate flex-1">{s || '(no serial read)'}</span>
+              <button
+                onClick={() => onDeletePackage(group.entryIds[i])}
+                className="text-surface-500 hover:text-rose-400 p-1"
+                aria-label="Remove package"
+              >
+                <Trash2 size={14} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </li>
   );
 }
 

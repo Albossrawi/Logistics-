@@ -12,11 +12,14 @@ interface SettingsStore {
   model: string;
   /** Auto-read and auto-add each photo, then reopen the camera. */
   rapidCapture: boolean;
+  /** Count CLL automatically = number of distinct SSCC numbers per delivery. */
+  autoCll: boolean;
 
   setEngine: (e: ScanEngine) => void;
   setApiKey: (k: string) => void;
   setModel: (m: string) => void;
   setRapidCapture: (v: boolean) => void;
+  setAutoCll: (v: boolean) => void;
 }
 
 export const AI_MODELS = [
@@ -31,10 +34,12 @@ export const useSettingsStore = create<SettingsStore>()(
       apiKey: '',
       model: 'claude-opus-4-8',
       rapidCapture: false,
+      autoCll: false,
       setEngine: (engine) => set({ engine }),
       setApiKey: (apiKey) => set({ apiKey }),
       setModel: (model) => set({ model }),
       setRapidCapture: (rapidCapture) => set({ rapidCapture }),
+      setAutoCll: (autoCll) => set({ autoCll }),
     }),
     { name: 'delivery-labels-settings' }
   )

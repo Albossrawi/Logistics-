@@ -7,7 +7,9 @@ export interface LabelEntry {
   deliveryNumber: string;
   /** Reference number, e.g. "SRV010001". */
   referenceNumber: string;
-  /** Number of colli (CLL / packages) for this row. */
+  /** SSCC / long serial barcode number at the bottom of the label (unique per box). */
+  sscc?: string;
+  /** Number of colli (CLL / packages) for this row. Manual mode only. */
   quantity: string;
   /** Optional photo of the label (data URL). Not persisted to storage. */
   photo?: string;

@@ -1,6 +1,8 @@
 export interface ExtractionResult {
   deliveryNumber: string;
   referenceNumber: string;
+  /** SSCC / long serial number at the bottom (digits only). */
+  sscc: string;
   rawText: string;
 }
 
@@ -92,8 +94,8 @@ export async function scanLabel(
     },
   });
   const rawText = data.text || '';
-  const { deliveryNumber, referenceNumber } = extractFields(rawText);
-  return { deliveryNumber, referenceNumber, rawText };
+  const { deliveryNumber, referenceNumber, sscc } = extractFields(rawText);
+  return { deliveryNumber, referenceNumber, sscc, rawText };
 }
 
 /**
@@ -101,12 +103,13 @@ export async function scanLabel(
  * consignment/delivery number looks like "NAKD1-8FL64" and the reference is
  * printed after "Ref:" (e.g. "SRV010001"), but falls back to generic patterns.
  */
-export function extractFields(raw: string): { deliveryNumber: string; referenceNumber: string } {
+export function extractFields(raw: string): { deliveryNumber: string; referenceNumber: string; sscc: string } {
   const text = raw.toUpperCase().replace(/[|]/g, 'I');
   const lines = text.split(/\n+/).map((l) => l.trim()).filter(Boolean);
 
   let referenceNumber = '';
   let deliveryNumber = '';
+  let sscc = '';
 
   // --- Reference number ---
   // Prefer an explicit "REF:" marker.
@@ -149,7 +152,20 @@ export function extractFields(raw: string): { deliveryNumber: string; referenceN
     if (m && clean(m[1]) !== referenceNumber) deliveryNumber = clean(m[1]);
   }
 
-  return { deliveryNumber, referenceNumber };
+  // --- SSCC / long serial number (bottom barcode) ---
+  // The SSCC is the longest run of digits on the label (18 digits, often with a
+  // "(00)" prefix). Pick the line with the most digits, ignoring short numbers
+  // like the postcode barcode "(421) 2088200".
+  {
+    let best = '';
+    for (const line of lines) {
+      const digits = line.replace(/[^0-9]/g, '');
+      if (digits.length >= 12 && digits.length > best.length) best = digits;
+    }
+    sscc = best;
+  }
+
+  return { deliveryNumber, referenceNumber, sscc };
 }
 
 function clean(s: string): string {
