@@ -8,7 +8,7 @@ import { clsx } from 'clsx';
 import { useLabelStore } from '../store/labelStore';
 import { useSettingsStore, AI_MODELS } from '../store/settingsStore';
 import { fileToDataURL, rotateImage, scanLabel } from '../utils/ocr';
-import { scanLabelAI } from '../utils/aiVision';
+import { scanLabelAI, testAiKey, describeAiError } from '../utils/aiVision';
 import { exportExcel, exportWord, printBatch, emailBatch, formatLine } from '../utils/labelExport';
 import { groupByDelivery, flatRows, isDuplicatePackage } from '../utils/grouping';
 import type { DeliveryGroup } from '../utils/grouping';
@@ -47,6 +47,7 @@ export function LabelExtractor() {
   const [engineNote, setEngineNote] = useState('');
   const [rapidCount, setRapidCount] = useState(0);
   const [rapidLast, setRapidLast] = useState('');
+  const [aiTest, setAiTest] = useState<{ status: 'idle' | 'testing' | 'ok' | 'error'; msg?: string }>({ status: 'idle' });
 
   const aiActive = engine === 'ai' && apiKey.trim() !== '';
 
@@ -75,7 +76,7 @@ export function LabelExtractor() {
       } catch (err) {
         console.error('AI vision failed, falling back to on-device OCR', err);
         const r = await scanLabel(photo, setProgress);
-        return { delivery: r.deliveryNumber, reference: r.referenceNumber, sscc: r.sscc, rawText: r.rawText, note: 'AI read failed — used on-device OCR instead. Check your API key in settings.' };
+        return { delivery: r.deliveryNumber, reference: r.referenceNumber, sscc: r.sscc, rawText: r.rawText, note: `AI read failed: ${describeAiError(err)} Used on-device OCR.` };
       }
     }
     const r = await scanLabel(photo, setProgress);
@@ -169,6 +170,16 @@ export function LabelExtractor() {
     setDraft(emptyDraft);
     setManualMode(false);
     setShowRaw(false);
+  }
+
+  async function runAiTest() {
+    setAiTest({ status: 'testing' });
+    try {
+      await testAiKey({ apiKey: apiKey.trim(), model });
+      setAiTest({ status: 'ok' });
+    } catch (err) {
+      setAiTest({ status: 'error', msg: describeAiError(err) });
+    }
   }
 
   async function withBusy(key: string, fn: () => Promise<void> | void) {
@@ -329,6 +340,24 @@ export function LabelExtractor() {
                 <p className="text-xs text-amber-400">
                   Enter an API key to turn on Smart read. Until then, scans use on-device OCR.
                 </p>
+              )}
+              {apiKey.trim() !== '' && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    onClick={runAiTest}
+                    disabled={aiTest.status === 'testing'}
+                    className="flex items-center gap-1.5 text-sm bg-surface-800 hover:bg-surface-700 border border-surface-700 text-white rounded-lg px-3 py-2 disabled:opacity-50"
+                  >
+                    {aiTest.status === 'testing' ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} className="text-violet-300" />}
+                    Test connection
+                  </button>
+                  {aiTest.status === 'ok' && (
+                    <span className="text-xs text-emerald-400 flex items-center gap-1"><Check size={13} /> Working — AI is ready.</span>
+                  )}
+                  {aiTest.status === 'error' && (
+                    <span className="text-xs text-amber-400 flex-1 min-w-0">{aiTest.msg}</span>
+                  )}
+                </div>
               )}
             </div>
           )}
