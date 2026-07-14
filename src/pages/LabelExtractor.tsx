@@ -12,7 +12,7 @@ import { scanLabelAI, testAiKey, describeAiError } from '../utils/aiVision';
 import { exportExcel, exportWord, printBatch, emailBatch, formatLine } from '../utils/labelExport';
 import { groupByDelivery, flatRows, isDuplicatePackage } from '../utils/grouping';
 import type { DeliveryGroup } from '../utils/grouping';
-import { validateDelivery, validateReference } from '../utils/validation';
+import { validateDelivery, validateReference, deliveryExample, referenceExample } from '../utils/validation';
 import type { LabelEntry } from '../types';
 
 interface Draft {
@@ -32,7 +32,7 @@ export function LabelExtractor() {
     updateBatch, addEntry, updateEntry, deleteEntry,
   } = useLabelStore();
 
-  const { engine, apiKey, model, rapidCapture, autoCll, setEngine, setApiKey, setModel, setRapidCapture, setAutoCll } = useSettingsStore();
+  const { engine, apiKey, model, rapidCapture, autoCll, format, setEngine, setApiKey, setModel, setRapidCapture, setAutoCll, setFormat, resetFormat } = useSettingsStore();
 
   const batch = activeBatch();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -110,7 +110,7 @@ export function LabelExtractor() {
       setEngineNote(note);
       // Only auto-add when both numbers pass the format check. Otherwise pause on
       // the review card with the errors so they can be corrected by hand.
-      const valid = !validateDelivery(delivery) && !validateReference(reference);
+      const valid = !validateDelivery(delivery, format) && !validateReference(reference, format);
       if (valid) {
         // In auto-CLL mode, skip a box already counted (same delivery + SSCC).
         if (autoCll && isDuplicatePackage(batch!.entries, delivery, sscc)) {
@@ -156,7 +156,7 @@ export function LabelExtractor() {
   }
 
   function commitDraft(force = false) {
-    if (!force && (validateDelivery(draft.deliveryNumber) || validateReference(draft.referenceNumber))) return;
+    if (!force && (validateDelivery(draft.deliveryNumber, format) || validateReference(draft.referenceNumber, format))) return;
     if (autoCll && isDuplicatePackage(batch!.entries, draft.deliveryNumber, draft.sscc)) {
       alert('That package (same delivery + serial number) is already counted.');
       return;
@@ -195,8 +195,8 @@ export function LabelExtractor() {
     }
   }
 
-  const draftDeliveryError = validateDelivery(draft.deliveryNumber);
-  const draftReferenceError = validateReference(draft.referenceNumber);
+  const draftDeliveryError = validateDelivery(draft.deliveryNumber, format);
+  const draftReferenceError = validateReference(draft.referenceNumber, format);
   const draftValid = !draftDeliveryError && !draftReferenceError;
 
   // Rows for display/export: grouped-by-delivery (auto CLL) or one per scan.
@@ -298,6 +298,77 @@ export function LabelExtractor() {
                 </span>
               </p>
             )}
+          </div>
+
+          {/* Number formats */}
+          <div className="border-t border-surface-800 pt-3 space-y-3">
+            <div className="text-xs font-semibold text-surface-300 uppercase tracking-wide">
+              Expected number formats
+            </div>
+            <p className="text-xs text-surface-500 -mt-1">
+              Scans that don't match are flagged for manual entry.
+            </p>
+
+            <div className="grid gap-2 sm:grid-cols-[1fr_auto] items-end">
+              <label className="block min-w-0">
+                <span className="text-xs text-surface-400">Delivery prefix</span>
+                <input
+                  value={format.deliveryPrefix}
+                  onChange={(e) => setFormat({ deliveryPrefix: e.target.value })}
+                  className="mt-1 w-full min-w-0 bg-surface-800 border border-surface-700 rounded-lg px-3 py-2 text-white font-mono text-sm"
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs text-surface-400">Chars after</span>
+                <input
+                  type="number" min={0} max={30} inputMode="numeric"
+                  value={format.deliverySuffixLen}
+                  onChange={(e) => setFormat({ deliverySuffixLen: Math.max(0, parseInt(e.target.value) || 0) })}
+                  className="mt-1 w-20 bg-surface-800 border border-surface-700 rounded-lg px-3 py-2 text-white text-sm"
+                />
+              </label>
+            </div>
+            <label className="flex items-center gap-2 text-xs text-surface-300">
+              <input
+                type="checkbox"
+                checked={format.deliveryDigitsOnly}
+                onChange={(e) => setFormat({ deliveryDigitsOnly: e.target.checked })}
+                className="w-4 h-4 accent-primary-500"
+              />
+              Delivery chars are digits only (no letters)
+            </label>
+
+            <div className="grid gap-2 sm:grid-cols-[1fr_auto] items-end">
+              <label className="block min-w-0">
+                <span className="text-xs text-surface-400">Reference prefix</span>
+                <input
+                  value={format.referencePrefix}
+                  onChange={(e) => setFormat({ referencePrefix: e.target.value })}
+                  className="mt-1 w-full min-w-0 bg-surface-800 border border-surface-700 rounded-lg px-3 py-2 text-white font-mono text-sm"
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs text-surface-400"># digits</span>
+                <input
+                  type="number" min={0} max={30} inputMode="numeric"
+                  value={format.referenceDigits}
+                  onChange={(e) => setFormat({ referenceDigits: Math.max(0, parseInt(e.target.value) || 0) })}
+                  className="mt-1 w-20 bg-surface-800 border border-surface-700 rounded-lg px-3 py-2 text-white text-sm"
+                />
+              </label>
+            </div>
+
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <p className="text-xs text-surface-500 font-mono">
+                e.g. {deliveryExample(format)} · {referenceExample(format)}
+              </p>
+              <button
+                onClick={resetFormat}
+                className="text-xs text-surface-400 hover:text-white underline"
+              >
+                Reset to defaults
+              </button>
+            </div>
           </div>
 
           {engine === 'ai' && (
@@ -545,14 +616,14 @@ export function LabelExtractor() {
                 label="Delivery number"
                 value={draft.deliveryNumber}
                 onChange={(v) => setDraft((d) => ({ ...d, deliveryNumber: v }))}
-                placeholder="NAKD1-8FL64"
+                placeholder={deliveryExample(format)}
                 invalid={!!draftDeliveryError}
               />
               <Field
                 label="Reference number"
                 value={draft.referenceNumber}
                 onChange={(v) => setDraft((d) => ({ ...d, referenceNumber: v }))}
-                placeholder="SRV010001"
+                placeholder={referenceExample(format)}
                 invalid={!!draftReferenceError}
               />
               {autoCll ? (
