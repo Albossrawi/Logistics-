@@ -9,6 +9,11 @@
     box-sizing: border-box;
   }
 
+  html {
+    /* Scale the whole UI up (rem-based sizes + spacing grow together). */
+    font-size: 128%;
+  }
+
   html, body {
     margin: 0;
     padding: 0;
