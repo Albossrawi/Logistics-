@@ -70,17 +70,18 @@ export function LabelExtractor() {
 
   /** Read a photo with the active engine (AI with OCR fallback, or OCR). */
   async function performScan(photo: string): Promise<{ delivery: string; reference: string; sscc: string; rawText: string; note: string }> {
+    const prefixes = { deliveryPrefix: format.deliveryPrefix, referencePrefix: format.referencePrefix };
     if (aiActive) {
       try {
-        const r = await scanLabelAI(photo, { apiKey: apiKey.trim(), model });
+        const r = await scanLabelAI(photo, { apiKey: apiKey.trim(), model, ...prefixes });
         return { delivery: r.deliveryNumber, reference: r.referenceNumber, sscc: r.sscc, rawText: r.rawText, note: 'Read with AI (Claude vision)' };
       } catch (err) {
         console.error('AI vision failed, falling back to on-device OCR', err);
-        const r = await scanLabel(photo, setProgress);
+        const r = await scanLabel(photo, setProgress, prefixes);
         return { delivery: r.deliveryNumber, reference: r.referenceNumber, sscc: r.sscc, rawText: r.rawText, note: `AI read failed: ${describeAiError(err)} Used on-device OCR.` };
       }
     }
-    const r = await scanLabel(photo, setProgress);
+    const r = await scanLabel(photo, setProgress, prefixes);
     return { delivery: r.deliveryNumber, reference: r.referenceNumber, sscc: r.sscc, rawText: r.rawText, note: '' };
   }
 
