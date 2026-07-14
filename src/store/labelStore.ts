@@ -39,6 +39,9 @@ interface LabelStore {
   addEntry: (batchId: string, entry: Omit<LabelEntry, 'id' | 'createdAt'>) => void;
   updateEntry: (batchId: string, entryId: string, patch: Partial<LabelEntry>) => void;
   deleteEntry: (batchId: string, entryId: string) => void;
+
+  /** Erase all sheets and rows from this device. */
+  clearAll: () => void;
 }
 
 export const useLabelStore = create<LabelStore>()(
@@ -53,6 +56,12 @@ export const useLabelStore = create<LabelStore>()(
           const { batches, activeBatchId } = get();
           return batches.find((b) => b.id === activeBatchId) ?? batches[0];
         },
+
+        clearAll: () =>
+          set(() => {
+            const b = newBatch();
+            return { batches: [b], activeBatchId: b.id };
+          }),
 
         createBatch: () =>
           set((s) => {

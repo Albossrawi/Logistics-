@@ -29,7 +29,7 @@ const emptyDraft: Draft = { deliveryNumber: '', referenceNumber: '', sscc: '', q
 export function LabelExtractor() {
   const {
     batches, activeBatchId, activeBatch, createBatch, selectBatch, deleteBatch,
-    updateBatch, addEntry, updateEntry, deleteEntry,
+    updateBatch, addEntry, updateEntry, deleteEntry, clearAll,
   } = useLabelStore();
 
   const { engine, apiKey, model, rapidCapture, autoCll, format, setEngine, setApiKey, setModel, setRapidCapture, setAutoCll, setFormat, resetFormat } = useSettingsStore();
@@ -436,6 +436,24 @@ export function LabelExtractor() {
               )}
             </div>
           )}
+
+          {/* Privacy + data control */}
+          <div className="border-t border-surface-800 pt-3 space-y-2">
+            <div className="text-xs font-semibold text-surface-300 uppercase tracking-wide">Privacy &amp; data</div>
+            <p className="text-xs text-surface-500 leading-relaxed">
+              Photos are never saved — only the numbers are kept, on this device. On-device OCR
+              reads labels locally (nothing leaves your phone). <b className="text-surface-300">Smart read (AI)</b> sends
+              the photo to Anthropic (USA) to read it — turn it off to keep everything on your device.
+            </p>
+            <button
+              onClick={() => {
+                if (confirm('Erase ALL sheets and rows from this device? This cannot be undone.')) clearAll();
+              }}
+              className="flex items-center gap-1.5 text-sm text-rose-400 hover:text-rose-300 border border-rose-500/40 rounded-lg px-3 py-2"
+            >
+              <Trash2 size={15} /> Clear all data from this device
+            </button>
+          </div>
         </div>
       )}
 
