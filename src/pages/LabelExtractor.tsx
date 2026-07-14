@@ -12,6 +12,7 @@ import { scanLabelAI, testAiKey, describeAiError } from '../utils/aiVision';
 import { exportExcel, exportWord, printBatch, emailBatch, formatLine } from '../utils/labelExport';
 import { groupByDelivery, flatRows, isDuplicatePackage } from '../utils/grouping';
 import type { DeliveryGroup } from '../utils/grouping';
+import { validateDelivery, validateReference } from '../utils/validation';
 import type { LabelEntry } from '../types';
 
 interface Draft {
@@ -107,11 +108,10 @@ export function LabelExtractor() {
     try {
       const { delivery, reference, sscc, rawText, note } = await performScan(photo);
       setEngineNote(note);
-      // Auto-CLL groups by delivery number, so a scan with no delivery number
-      // can't be auto-added (it would create a phantom row). Everything else
-      // needs at least one field. Otherwise pause on the review card.
-      const enough = autoCll ? delivery.trim() !== '' : (delivery.trim() !== '' || reference.trim() !== '');
-      if (enough) {
+      // Only auto-add when both numbers pass the format check. Otherwise pause on
+      // the review card with the errors so they can be corrected by hand.
+      const valid = !validateDelivery(delivery) && !validateReference(reference);
+      if (valid) {
         // In auto-CLL mode, skip a box already counted (same delivery + SSCC).
         if (autoCll && isDuplicatePackage(batch!.entries, delivery, sscc)) {
           setRapidLast(`${delivery.trim()} · already counted`);
@@ -130,14 +130,15 @@ export function LabelExtractor() {
           window.setTimeout(() => fileRef.current?.click(), 400);
         }
       } else {
-        // Couldn't read enough — pause so it can be checked/typed by hand.
+        // Failed the format check — pause so it can be checked/typed by hand.
+        // The per-field errors are shown live on the review card below.
         setDraft({
           ...emptyDraft,
           photo,
           deliveryNumber: delivery,
           referenceNumber: reference,
           sscc,
-          rawText: rawText || (autoCll ? "Couldn't read the delivery number — check the photo and type it." : 'No numbers detected — enter them by hand.'),
+          rawText,
         });
       }
     } catch (err) {
@@ -154,8 +155,8 @@ export function LabelExtractor() {
     setDraft((d) => ({ ...d, photo: rotated }));
   }
 
-  function commitDraft() {
-    if (!draft.deliveryNumber.trim() && !draft.referenceNumber.trim()) return;
+  function commitDraft(force = false) {
+    if (!force && (validateDelivery(draft.deliveryNumber) || validateReference(draft.referenceNumber))) return;
     if (autoCll && isDuplicatePackage(batch!.entries, draft.deliveryNumber, draft.sscc)) {
       alert('That package (same delivery + serial number) is already counted.');
       return;
@@ -194,7 +195,9 @@ export function LabelExtractor() {
     }
   }
 
-  const canAdd = draft.deliveryNumber.trim() !== '' || draft.referenceNumber.trim() !== '';
+  const draftDeliveryError = validateDelivery(draft.deliveryNumber);
+  const draftReferenceError = validateReference(draft.referenceNumber);
+  const draftValid = !draftDeliveryError && !draftReferenceError;
 
   // Rows for display/export: grouped-by-delivery (auto CLL) or one per scan.
   const groups = groupByDelivery(batch.entries);
@@ -529,17 +532,28 @@ export function LabelExtractor() {
             )}
 
             <div className="space-y-3">
+              {!draftValid && (draft.deliveryNumber || draft.referenceNumber) && (
+                <div className="text-xs text-rose-300 bg-rose-500/10 border border-rose-500/30 rounded-lg px-3 py-2">
+                  Check these before adding:
+                  <ul className="mt-1 list-disc pl-4 space-y-0.5">
+                    {draftDeliveryError && <li>{draftDeliveryError}</li>}
+                    {draftReferenceError && <li>{draftReferenceError}</li>}
+                  </ul>
+                </div>
+              )}
               <Field
                 label="Delivery number"
                 value={draft.deliveryNumber}
                 onChange={(v) => setDraft((d) => ({ ...d, deliveryNumber: v }))}
                 placeholder="NAKD1-8FL64"
+                invalid={!!draftDeliveryError}
               />
               <Field
                 label="Reference number"
                 value={draft.referenceNumber}
                 onChange={(v) => setDraft((d) => ({ ...d, referenceNumber: v }))}
                 placeholder="SRV010001"
+                invalid={!!draftReferenceError}
               />
               {autoCll ? (
                 <Field
@@ -578,12 +592,20 @@ export function LabelExtractor() {
                   </button>
                 )}
                 <button
-                  onClick={commitDraft}
-                  disabled={!canAdd}
+                  onClick={() => commitDraft()}
+                  disabled={!draftValid}
                   className="flex items-center gap-1.5 text-sm bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg px-4 py-2 font-medium disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <Plus size={16} /> Add to list
                 </button>
+                {!draftValid && (draft.deliveryNumber.trim() !== '' || draft.referenceNumber.trim() !== '') && (
+                  <button
+                    onClick={() => commitDraft(true)}
+                    className="flex items-center gap-1.5 text-sm text-amber-400 hover:text-amber-300 border border-amber-500/40 rounded-lg px-3 py-2"
+                  >
+                    Add anyway
+                  </button>
+                )}
                 <button
                   onClick={() => { setDraft(emptyDraft); setManualMode(false); setShowRaw(false); }}
                   className="flex items-center gap-1.5 text-sm text-surface-400 hover:text-white rounded-lg px-3 py-2"
@@ -700,9 +722,9 @@ export function LabelExtractor() {
 }
 
 function Field({
-  label, value, onChange, placeholder,
+  label, value, onChange, placeholder, invalid,
 }: {
-  label: string; value: string; onChange: (v: string) => void; placeholder?: string;
+  label: string; value: string; onChange: (v: string) => void; placeholder?: string; invalid?: boolean;
 }) {
   return (
     <label className="block">
@@ -711,7 +733,10 @@ function Field({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="mt-1 w-full bg-surface-800 border border-surface-700 rounded-lg px-3 py-2 text-white font-mono"
+        className={clsx(
+          'mt-1 w-full bg-surface-800 border rounded-lg px-3 py-2 text-white font-mono',
+          invalid ? 'border-rose-500' : 'border-surface-700'
+        )}
       />
     </label>
   );
