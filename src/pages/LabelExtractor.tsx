@@ -624,7 +624,7 @@ export function LabelExtractor() {
       {/* Entries list */}
       <div className="bg-surface-900 border border-surface-800 rounded-xl overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3 border-b border-surface-800">
-          <h2 className="text-lg font-semibold text-white">
+          <h2 className="font-semibold text-white">
             {autoCll ? 'Deliveries' : 'Rows'}{' '}
             <span className="text-surface-400 font-normal">
               ({autoCll ? `${groups.length} · ${batch.entries.length} scans` : batch.entries.length})

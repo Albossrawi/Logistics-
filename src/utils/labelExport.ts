@@ -51,8 +51,9 @@ export async function exportWord(batch: LabelBatch, rows: OutputRow[]): Promise<
   };
   const cell = (text: string) =>
     new TableCell({
+      margins: { top: 60, bottom: 60, left: 90, right: 90 },
       borders: thinBorders(),
-      children: [new Paragraph({ children: [new TextRun({ text, size: 22 })] })],
+      children: [new Paragraph({ children: [new TextRun({ text, size: 30 })] })],
     });
 
   const headerCells = ['#', 'Delivery number', 'Reference', 'CLL'];
@@ -63,9 +64,10 @@ export async function exportWord(batch: LabelBatch, rows: OutputRow[]): Promise<
       (t) =>
         new TableCell({
           shading: { fill: 'E5E7EB' },
+          margins: { top: 60, bottom: 60, left: 90, right: 90 },
           children: [
             new Paragraph({
-              children: [new TextRun({ text: t, bold: true, size: 22 })],
+              children: [new TextRun({ text: t, bold: true, size: 30 })],
             }),
           ],
         })
@@ -90,14 +92,15 @@ export async function exportWord(batch: LabelBatch, rows: OutputRow[]): Promise<
           new Paragraph({
             heading: HeadingLevel.HEADING_1,
             alignment: AlignmentType.CENTER,
-            children: [new TextRun({ text: batch.title || 'Delivery labels', bold: true })],
+            children: [new TextRun({ text: batch.title || 'Delivery labels', bold: true, size: 52 })],
           }),
           new Paragraph({
             alignment: AlignmentType.CENTER,
+            spacing: { after: 200 },
             children: [
-              new TextRun({ text: `DATO: ${formatDate(batch.date)}`, size: 24 }),
+              new TextRun({ text: `DATO: ${formatDate(batch.date)}`, size: 34, bold: true }),
               ...(batch.pallet
-                ? [new TextRun({ text: `     PALLE: ${batch.pallet}`, size: 24, bold: true })]
+                ? [new TextRun({ text: `     PALLE: ${batch.pallet}`, size: 34, bold: true })]
                 : []),
             ],
           }),
@@ -112,7 +115,7 @@ export async function exportWord(batch: LabelBatch, rows: OutputRow[]): Promise<
               new TextRun({
                 text: `Total rows: ${rows.length}`,
                 italics: true,
-                size: 20,
+                size: 24,
               }),
             ],
           }),
@@ -198,14 +201,14 @@ export function printBatch(batch: LabelBatch, rows: OutputRow[]): void {
     <style>
       * { box-sizing: border-box; }
       body { font-family: Arial, Helvetica, sans-serif; color: #111; margin: 24px; }
-      h1 { font-size: 20px; text-align: center; margin: 0 0 4px; text-transform: uppercase; }
-      .meta { text-align: center; font-size: 15px; margin-bottom: 16px; font-weight: bold; }
-      .meta .pallet { margin-left: 24px; }
+      h1 { font-size: 34px; text-align: center; margin: 0 0 8px; text-transform: uppercase; }
+      .meta { text-align: center; font-size: 24px; margin-bottom: 22px; font-weight: bold; }
+      .meta .pallet { margin-left: 28px; }
       table { width: 100%; border-collapse: collapse; }
-      th, td { border: 1px solid #999; padding: 8px 10px; font-size: 14px; text-align: left; }
-      th { background: #eee; }
-      td.num, th.num { text-align: center; width: 48px; }
-      tfoot td { border: none; font-style: italic; padding-top: 10px; }
+      th, td { border: 1.5px solid #666; padding: 12px 14px; font-size: 22px; text-align: left; }
+      th { background: #eee; font-size: 20px; }
+      td.num, th.num { text-align: center; width: 60px; }
+      tfoot td { border: none; font-style: italic; font-size: 18px; padding-top: 14px; }
       @media print { body { margin: 12mm; } }
     </style></head><body>
       <h1>${escapeHtml(batch.title) || 'Delivery labels'}</h1>
