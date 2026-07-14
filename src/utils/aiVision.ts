@@ -4,15 +4,19 @@ import type { ExtractionResult } from './ocr';
 export interface AIScanOptions {
   apiKey: string;
   model: string;
+  deliveryPrefix?: string;
+  referencePrefix?: string;
 }
 
-const SYSTEM = `You read shipping/delivery labels (often DSV labels) from photos and extract exactly three fields:
-- "deliveryNumber": the consignment / delivery number, usually the large bold code such as "NAKD1-8FL64".
-- "referenceNumber": the reference number, usually printed after "Ref:" such as "SRV010001".
+function buildSystem(deliveryPrefix = 'NAKD1-', referencePrefix = 'SRV'): string {
+  return `You read shipping/delivery labels (often DSV labels) from photos and extract exactly three fields:
+- "referenceNumber": the reference number, printed after "Ref:", usually starting with "${referencePrefix}" (e.g. "SRV010001").
+- "deliveryNumber": the consignment / delivery number, usually starting with "${deliveryPrefix}" (e.g. "NAKD1-8FL64"). It is the large bold code printed DIRECTLY BELOW the reference ("Ref:") line, and also appears next to "Consignment". Read every character carefully — do not confuse similar characters (e.g. 8 vs S vs 5).
 - "sscc": the long serial / SSCC barcode number near the bottom (typically 18 digits, sometimes shown with a "(00)" prefix, e.g. "370733747952374111"). Return digits only. Do NOT return the short postcode barcode.
 Return the values exactly as printed. If a field is not visible, use an empty string.`;
+}
 
-const PROMPT = `Extract the delivery number, reference number, and SSCC serial number from this label.
+const PROMPT = `Extract the reference number, the delivery number (the bold code directly below the "Ref:" line), and the SSCC serial number from this label.
 Respond with ONLY a compact JSON object and nothing else, e.g.:
 {"deliveryNumber":"NAKD1-8FL64","referenceNumber":"SRV010001","sscc":"370733747952374111"}`;
 
@@ -55,7 +59,7 @@ export async function scanLabelAI(dataUrl: string, opts: AIScanOptions): Promise
   const response = await client.messages.create({
     model: opts.model || 'claude-opus-4-8',
     max_tokens: 300,
-    system: SYSTEM,
+    system: buildSystem(opts.deliveryPrefix, opts.referencePrefix),
     messages: [
       {
         role: 'user',

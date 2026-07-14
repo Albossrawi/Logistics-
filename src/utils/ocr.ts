@@ -110,9 +110,17 @@ async function preprocess(dataUrl: string): Promise<string> {
  * Run OCR on a label image and try to extract the delivery & reference numbers.
  * `onProgress` receives 0..1.
  */
+export interface ExtractOptions {
+  /** Delivery prefix, e.g. "NAKD1-" (only the leading letters are used to search). */
+  deliveryPrefix?: string;
+  /** Reference prefix, e.g. "SRV". */
+  referencePrefix?: string;
+}
+
 export async function scanLabel(
   dataUrl: string,
-  onProgress?: (p: number) => void
+  onProgress?: (p: number) => void,
+  opts?: ExtractOptions
 ): Promise<ExtractionResult> {
   const processed = await preprocess(dataUrl);
   const worker = await getWorker();
@@ -124,8 +132,12 @@ export async function scanLabel(
     progressCb = undefined;
   }
   const rawText = data.text || '';
-  const { deliveryNumber, referenceNumber, sscc } = extractFields(rawText);
+  const { deliveryNumber, referenceNumber, sscc } = extractFields(rawText, opts);
   return { deliveryNumber, referenceNumber, sscc, rawText };
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 /**
@@ -133,46 +145,61 @@ export async function scanLabel(
  * consignment/delivery number looks like "NAKD1-8FL64" and the reference is
  * printed after "Ref:" (e.g. "SRV010001"), but falls back to generic patterns.
  */
-export function extractFields(raw: string): { deliveryNumber: string; referenceNumber: string; sscc: string } {
+export function extractFields(
+  raw: string,
+  opts?: ExtractOptions
+): { deliveryNumber: string; referenceNumber: string; sscc: string } {
   const text = raw.toUpperCase().replace(/[|]/g, 'I');
   const lines = text.split(/\n+/).map((l) => l.trim()).filter(Boolean);
+
+  const refPrefix = (opts?.referencePrefix ?? 'SRV').trim().toUpperCase();
+  // Only the leading letters of the delivery prefix are reliable to search for
+  // (e.g. "NAKD1-" → "NAKD"), since OCR mangles the digits/dash.
+  const delLetters = ((opts?.deliveryPrefix ?? 'NAKD').match(/^[A-Za-z]+/)?.[0] ?? 'NAKD').toUpperCase();
+  const delRe = new RegExp(`\\b(${escapeRegExp(delLetters)}\\d?\\s*-?\\s*[A-Z0-9]{3,})\\b`);
+  const refTokenRe = refPrefix ? new RegExp(`\\b(${escapeRegExp(refPrefix)}\\d{3,})\\b`) : null;
 
   let referenceNumber = '';
   let deliveryNumber = '';
   let sscc = '';
+  let refIdx = -1;
 
-  // --- Reference number ---
-  // Prefer an explicit "REF:" marker.
-  for (const line of lines) {
-    const m = line.match(/REF[\s:.#-]*([A-Z]{2,4}\d{3,})/);
+  // --- Reference number --- (prefer an explicit "REF:" marker, then the prefix)
+  for (let i = 0; i < lines.length; i++) {
+    let m = lines[i].match(/REF[\s:.#-]*([A-Z]{2,5}\d{3,})/);
+    if (!m && refTokenRe) m = lines[i].match(refTokenRe);
     if (m) {
       referenceNumber = clean(m[1]);
+      refIdx = i;
       break;
     }
   }
-  // Fallback: a standalone SRV-style token anywhere.
-  if (!referenceNumber) {
-    const m = text.match(/\b(SRV\d{4,})\b/);
+  if (!referenceNumber && refTokenRe) {
+    const m = text.match(refTokenRe);
     if (m) referenceNumber = clean(m[1]);
   }
 
   // --- Delivery / consignment number ---
-  // Prefer a NAKD-style token with a suffix after a dash.
-  const delMatch = text.match(/\b(NAKD\d?\s*-\s*[A-Z0-9]{3,})\b/);
-  if (delMatch) {
-    deliveryNumber = clean(delMatch[1]).replace(/\s+/g, '');
+  // On these labels the delivery number is printed directly below the reference
+  // line, so look right beneath it first.
+  if (refIdx >= 0) {
+    for (const l of [lines[refIdx + 1], lines[refIdx + 2], lines[refIdx]]) {
+      const m = l?.match(delRe);
+      if (m) { deliveryNumber = clean(m[1]); break; }
+    }
   }
-  // Fallback: look near a "CONSIGNMENT" label.
+  // Anywhere in the text.
+  if (!deliveryNumber) {
+    const m = text.match(delRe);
+    if (m) deliveryNumber = clean(m[1]);
+  }
+  // Near a "CONSIGNMENT" label.
   if (!deliveryNumber) {
     const idx = lines.findIndex((l) => /CONSIGNMENT/.test(l));
     if (idx >= 0) {
       for (const l of [lines[idx], lines[idx + 1], lines[idx + 2]]) {
-        if (!l) continue;
-        const m = l.match(/\b([A-Z]{2,5}\d?-[A-Z0-9]{3,})\b/);
-        if (m) {
-          deliveryNumber = clean(m[1]);
-          break;
-        }
+        const m = l?.match(/\b([A-Z]{2,5}\d?-[A-Z0-9]{3,})\b/);
+        if (m) { deliveryNumber = clean(m[1]); break; }
       }
     }
   }
