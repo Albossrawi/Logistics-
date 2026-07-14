@@ -29,8 +29,8 @@ interface SettingsStore {
 }
 
 export const AI_MODELS = [
+  { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5 — fast & cheap (recommended)' },
   { id: 'claude-opus-4-8', label: 'Claude Opus 4.8 — most accurate' },
-  { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5 — faster & cheaper' },
 ];
 
 export const useSettingsStore = create<SettingsStore>()(
@@ -38,7 +38,7 @@ export const useSettingsStore = create<SettingsStore>()(
     (set) => ({
       engine: 'ocr',
       apiKey: '',
-      model: 'claude-opus-4-8',
+      model: 'claude-haiku-4-5',
       rapidCapture: false,
       autoCll: false,
       format: DEFAULT_FORMAT,
@@ -50,6 +50,18 @@ export const useSettingsStore = create<SettingsStore>()(
       setFormat: (patch) => set((s) => ({ format: { ...s.format, ...patch } })),
       resetFormat: () => set({ format: DEFAULT_FORMAT }),
     }),
-    { name: 'delivery-labels-settings' }
+    {
+      name: 'delivery-labels-settings',
+      version: 1,
+      // Move anyone still on the old default (Opus) to the new default (Haiku).
+      // A model the user picked deliberately other than the old default is kept.
+      migrate: (persisted, version) => {
+        const s = persisted as SettingsStore;
+        if (version < 1 && s && s.model === 'claude-opus-4-8') {
+          s.model = 'claude-haiku-4-5';
+        }
+        return s;
+      },
+    }
   )
 );
