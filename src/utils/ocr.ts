@@ -11,9 +11,16 @@ export interface ExtractionResult {
 // The Tesseract engine, worker, and English model are self-hosted under
 // /tesseract (see public/tesseract) so OCR works with no CDN dependency —
 // reliable on locked-down networks and after the first load, offline.
+//
+// corePath is a *directory* (not a specific .wasm.js file) on purpose: that
+// lets tesseract.js feature-detect the device and pick the right core —
+// relaxed-SIMD, SIMD, or the plain non-SIMD fallback. Pinning a single
+// -simd- file force-loads the SIMD core and silently fails to read anything
+// on phones/browsers without WASM SIMD. We ship all three lstm cores so
+// every device gets a working one (the browser downloads only the one it needs).
 const TESSERACT_PATHS = {
   workerPath: '/tesseract/worker.min.js',
-  corePath: '/tesseract/tesseract-core-simd-lstm.wasm.js',
+  corePath: '/tesseract',
   langPath: '/tesseract/lang',
 };
 
@@ -24,12 +31,18 @@ let progressCb: ((p: number) => void) | undefined;
 async function getWorker(): Promise<TesseractWorker> {
   if (!workerPromise) {
     const { createWorker } = await import('tesseract.js');
-    workerPromise = createWorker('eng', 1, {
+    const p = createWorker('eng', 1, {
       ...TESSERACT_PATHS,
       logger: (m: { status: string; progress: number }) => {
         if (m.status === 'recognizing text' && progressCb) progressCb(m.progress);
       },
     });
+    // Don't cache a rejected promise: if init fails once (e.g. a flaky first
+    // load), clear it so the next scan retries instead of failing forever.
+    p.catch(() => {
+      if (workerPromise === p) workerPromise = null;
+    });
+    workerPromise = p;
   }
   return workerPromise;
 }
