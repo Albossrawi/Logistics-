@@ -52,13 +52,17 @@ export const useSettingsStore = create<SettingsStore>()(
     }),
     {
       name: 'delivery-labels-settings',
-      version: 1,
-      // Move anyone still on the old default (Opus) to the new default (Haiku).
-      // A model the user picked deliberately other than the old default is kept.
+      version: 2,
       migrate: (persisted, version) => {
         const s = persisted as SettingsStore;
-        if (version < 1 && s && s.model === 'claude-opus-4-8') {
+        if (!s) return s;
+        // v1: move the old Opus default to Haiku (a deliberate pick is kept).
+        if (version < 1 && s.model === 'claude-opus-4-8') {
           s.model = 'claude-haiku-4-5';
+        }
+        // v2: drop the old SRV/6 reference requirement (references vary).
+        if (version < 2 && s.format && s.format.referencePrefix === 'SRV' && s.format.referenceDigits === 6) {
+          s.format = { ...s.format, referencePrefix: '', referenceDigits: 0 };
         }
         return s;
       },

@@ -15,11 +15,11 @@ export interface DeliveryGroup extends OutputRow {
   entryIds: string[];
 }
 
-/** Flat rows: one output row per scan (manual CLL mode). */
+/** Flat rows: one output row per scan (manual CLL mode). Values upper-cased. */
 export function flatRows(entries: LabelEntry[]): OutputRow[] {
   return entries.map((e) => ({
-    deliveryNumber: e.deliveryNumber,
-    referenceNumber: e.referenceNumber,
+    deliveryNumber: e.deliveryNumber.toUpperCase(),
+    referenceNumber: e.referenceNumber.toUpperCase(),
     quantity: e.quantity,
   }));
 }
@@ -35,12 +35,12 @@ export function groupByDelivery(entries: LabelEntry[]): DeliveryGroup[] {
   const order: string[] = [];
 
   for (const e of entries) {
-    const delivery = e.deliveryNumber.trim();
-    const key = delivery.toUpperCase();
+    const delivery = e.deliveryNumber.trim().toUpperCase();
+    const key = delivery;
     if (!map.has(key)) {
       map.set(key, {
         deliveryNumber: delivery,
-        referenceNumber: e.referenceNumber.trim(),
+        referenceNumber: e.referenceNumber.trim().toUpperCase(),
         quantity: '0',
         ssccs: [],
         entryIds: [],
@@ -49,7 +49,7 @@ export function groupByDelivery(entries: LabelEntry[]): DeliveryGroup[] {
       order.push(key);
     }
     const g = map.get(key)!;
-    if (!g.referenceNumber && e.referenceNumber.trim()) g.referenceNumber = e.referenceNumber.trim();
+    if (!g.referenceNumber && e.referenceNumber.trim()) g.referenceNumber = e.referenceNumber.trim().toUpperCase();
 
     const sscc = (e.sscc ?? '').trim();
     if (sscc) {
