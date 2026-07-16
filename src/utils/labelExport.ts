@@ -3,8 +3,8 @@ import type { OutputRow } from './grouping';
 
 /** Combined line as written on the manual sheet: NAKD1-8FL64/SRV010001 - 4 CLL */
 export function formatLine(e: OutputRow): string {
-  const del = e.deliveryNumber.trim();
-  const ref = e.referenceNumber.trim();
+  const del = e.deliveryNumber.trim().toUpperCase();
+  const ref = e.referenceNumber.trim().toUpperCase();
   const qty = e.quantity.trim();
   const head = ref ? `${del}/${ref}` : del;
   return qty ? `${head} - ${qty} CLL` : head;

@@ -86,26 +86,37 @@ export const useLabelStore = create<LabelStore>()(
                     ...b,
                     entries: [
                       ...b.entries,
-                      { ...entry, id: uid(), createdAt: new Date().toISOString() },
+                      {
+                        ...entry,
+                        // Store codes upper-cased so all output is capital case.
+                        deliveryNumber: entry.deliveryNumber.toUpperCase(),
+                        referenceNumber: entry.referenceNumber.toUpperCase(),
+                        id: uid(),
+                        createdAt: new Date().toISOString(),
+                      },
                     ],
                   }
                 : b
             ),
           })),
 
-        updateEntry: (batchId, entryId, patch) =>
+        updateEntry: (batchId, entryId, patch) => {
+          const p = { ...patch };
+          if (p.deliveryNumber !== undefined) p.deliveryNumber = p.deliveryNumber.toUpperCase();
+          if (p.referenceNumber !== undefined) p.referenceNumber = p.referenceNumber.toUpperCase();
           set((s) => ({
             batches: s.batches.map((b) =>
               b.id === batchId
                 ? {
                     ...b,
                     entries: b.entries.map((e) =>
-                      e.id === entryId ? { ...e, ...patch } : e
+                      e.id === entryId ? { ...e, ...p } : e
                     ),
                   }
                 : b
             ),
-          })),
+          }));
+        },
 
         deleteEntry: (batchId, entryId) =>
           set((s) => ({

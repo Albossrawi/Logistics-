@@ -19,8 +19,9 @@ export const DEFAULT_FORMAT: FormatConfig = {
   deliveryPrefix: 'NAKD1-',
   deliverySuffixLen: 5,
   deliveryDigitsOnly: false,
-  referencePrefix: 'SRV',
-  referenceDigits: 6,
+  // No prefix / count required by default — references vary (SRV…, plain digits, …).
+  referencePrefix: '',
+  referenceDigits: 0,
 };
 
 /** A sample valid value, for hints/placeholders. */
@@ -56,12 +57,16 @@ export function validateReference(value: string, cfg: FormatConfig): string | un
   if (prefix && !s.startsWith(prefix)) {
     return `Reference must start with "${cfg.referencePrefix}" (e.g. ${referenceExample(cfg)}) — got "${value.trim()}".`;
   }
-  const digits = s.slice(prefix.length);
-  if (!/^[0-9]*$/.test(digits)) {
-    return `Reference must be ${cfg.referencePrefix ? `"${cfg.referencePrefix}" + ` : ''}digits only (e.g. ${referenceExample(cfg)}) — got "${value.trim()}".`;
-  }
-  if (cfg.referenceDigits > 0 && digits.length !== cfg.referenceDigits) {
-    return `Reference needs ${cfg.referenceDigits} digits${cfg.referencePrefix ? ` after "${cfg.referencePrefix}"` : ''} (e.g. ${referenceExample(cfg)}) — got "${value.trim()}".`;
+  // Only enforce a digit count/shape when one is configured; otherwise any
+  // non-empty reference is accepted.
+  if (cfg.referenceDigits > 0) {
+    const digits = s.slice(prefix.length);
+    if (!/^[0-9]*$/.test(digits)) {
+      return `Reference must be ${cfg.referencePrefix ? `"${cfg.referencePrefix}" + ` : ''}digits only (e.g. ${referenceExample(cfg)}) — got "${value.trim()}".`;
+    }
+    if (digits.length !== cfg.referenceDigits) {
+      return `Reference needs ${cfg.referenceDigits} digits${cfg.referencePrefix ? ` after "${cfg.referencePrefix}"` : ''} (e.g. ${referenceExample(cfg)}) — got "${value.trim()}".`;
+    }
   }
   return undefined;
 }

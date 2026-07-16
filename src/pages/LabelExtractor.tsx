@@ -361,7 +361,7 @@ export function LabelExtractor() {
 
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <p className="text-xs text-surface-500 font-mono">
-                e.g. {deliveryExample(format)} · {referenceExample(format)}
+                e.g. {deliveryExample(format)}{referenceExample(format) ? ` · ${referenceExample(format)}` : ' · (any reference)'}
               </p>
               <button
                 onClick={resetFormat}
@@ -624,7 +624,7 @@ export function LabelExtractor() {
                 label="Reference number"
                 value={draft.referenceNumber}
                 onChange={(v) => setDraft((d) => ({ ...d, referenceNumber: v }))}
-                placeholder={referenceExample(format)}
+                placeholder={referenceExample(format) || 'reference'}
                 invalid={!!draftReferenceError}
               />
               {autoCll ? (
@@ -908,7 +908,7 @@ function EntryRow({
       <div className="min-w-0 flex-1">
         <div className="font-mono text-sm text-white truncate">{formatLine(entry)}</div>
         <div className="text-xs text-surface-500">
-          {entry.deliveryNumber || '—'} · ref {entry.referenceNumber || '—'}
+          {entry.deliveryNumber.toUpperCase() || '—'} · ref {entry.referenceNumber.toUpperCase() || '—'}
         </div>
       </div>
       <button onClick={() => { setD(entry.deliveryNumber); setR(entry.referenceNumber); setQ(entry.quantity); setEditing(true); }} className="text-surface-400 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity text-xs px-2 py-1">
